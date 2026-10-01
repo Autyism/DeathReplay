@@ -13,6 +13,9 @@
 	"entrypoints": {
 		"client": [
 			"io.github.autyi6969.deathreplay.DeathReplayClient"
+		],
+		"modmenu": [
+			"io.github.autyi6969.deathreplay.config.ModMenuIntegration"
 		]
 	},
 	"mixins": [
@@ -23,5 +26,8 @@
 		"minecraft": "~1.21.11",
 		"java": ">=21",
 		"fabric-api": "*"
+	},
+	"suggests": {
+		"modmenu": "*"
 	}
 }

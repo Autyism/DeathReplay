@@ -38,18 +38,18 @@ public final class DeathReplayConfig {
 
 	public static DeathReplayConfig get() {
 		if (instance == null) {
-			instance = load();
+			instance = readFrom(defaultPath());
 		}
 
 		return instance;
 	}
 
-	private static Path path() {
+	public static Path defaultPath() {
 		return FabricLoader.getInstance().getConfigDir().resolve(DeathReplayClient.MOD_ID + ".json");
 	}
 
-	private static DeathReplayConfig load() {
-		Path path = path();
+	/** Reads settings from {@code path}; a missing or broken file gives the defaults. */
+	public static DeathReplayConfig readFrom(Path path) {
 		if (Files.exists(path)) {
 			try (Reader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
 				DeathReplayConfig config = GSON.fromJson(reader, DeathReplayConfig.class);
@@ -66,8 +66,11 @@ public final class DeathReplayConfig {
 	}
 
 	public void save() {
+		this.writeTo(defaultPath());
+	}
+
+	public void writeTo(Path path) {
 		this.sanitize();
-		Path path = path();
 		try {
 			Files.createDirectories(path.getParent());
 			try (Writer writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {

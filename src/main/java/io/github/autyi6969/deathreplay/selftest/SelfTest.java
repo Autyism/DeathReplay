@@ -14,6 +14,7 @@ import java.util.function.Predicate;
 import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
 import io.github.autyi6969.deathreplay.camera.DetachedCamera;
 import io.github.autyi6969.deathreplay.config.DeathReplayConfig;
+import io.github.autyi6969.deathreplay.config.SettingsScreen;
 import io.github.autyi6969.deathreplay.death.DeathSpectateScreen;
 import io.github.autyi6969.deathreplay.death.DeathView;
 import io.github.autyi6969.deathreplay.record.EntitySample;
@@ -27,6 +28,7 @@ import io.github.autyi6969.deathreplay.replay.Replay;
 import io.github.autyi6969.deathreplay.replay.ReplayScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayView;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.DeathScreen;
@@ -81,6 +83,8 @@ public final class SelfTest {
 	private int failures;
 	private long startMillis;
 	private boolean finished;
+	private int realBufferSeconds;
+	private boolean realAutoSave;
 
 	private SelfTest() {
 	}
@@ -102,6 +106,8 @@ public final class SelfTest {
 			// The "Move with WASD" tutorial toast would cover a corner of every screenshot.
 			c.getTutorialManager().setStep(TutorialStep.NONE);
 			// In memory only (never saved): a short buffer so the test can fill it, and auto-save on.
+			this.realBufferSeconds = DeathReplayConfig.get().bufferSeconds;
+			this.realAutoSave = DeathReplayConfig.get().autoSave;
 			DeathReplayConfig.get().bufferSeconds = TEST_BUFFER_SECONDS;
 			DeathReplayConfig.get().autoSave = true;
 			deleteOldScreenshots(c);
@@ -173,6 +179,7 @@ public final class SelfTest {
 		screenshot("after_respawn");
 
 		respawnDuringReplayScript();
+		settingsScript();
 		// Screenshots are written on a background thread; give them time to land on disk.
 		waitTicks("flush screenshots", 40);
 	}
@@ -255,6 +262,64 @@ public final class SelfTest {
 				fail("could not read back " + file + ": " + e);
 			}
 		});
+	}
+
+	/** Feature (d): settings screen and Mod Menu entry. Runs while alive, with no screen open. */
+	private void settingsScript() {
+		run("restore the real settings", c -> {
+			// The test changed two settings in memory; the settings screen saves on close and
+			// must write back what the user actually had.
+			DeathReplayConfig.get().bufferSeconds = this.realBufferSeconds;
+			DeathReplayConfig.get().autoSave = this.realAutoSave;
+		});
+		run("check settings file round trip", c -> {
+			Path file = DeathReplayConfig.defaultPath().resolveSibling("deathreplay-selftest.json");
+			DeathReplayConfig written = new DeathReplayConfig();
+			written.bufferSeconds = 45;
+			written.autoSave = true;
+			written.replayView = ReplayView.FREE;
+			written.deathFreeCamera = false;
+			written.deathCameraMode = DeathCameraMode.ORBIT;
+			written.writeTo(file);
+			DeathReplayConfig read = DeathReplayConfig.readFrom(file);
+			check("settings survive a save and load", read.bufferSeconds == 45 && read.autoSave && read.replayView == ReplayView.FREE
+				&& !read.deathFreeCamera && read.deathCameraMode == DeathCameraMode.ORBIT);
+			try {
+				Files.deleteIfExists(file);
+			} catch (IOException e) {
+				fail("could not delete " + file);
+			}
+		});
+		run("open settings through the Mod Menu entry point", c -> {
+			boolean modMenu = FabricLoader.getInstance().isModLoaded("modmenu");
+			check("Mod Menu is loaded in the dev client", modMenu);
+			Screen screen = modMenu ? ModMenuProbe.createConfigScreen(c.currentScreen) : new SettingsScreen(c.currentScreen);
+			check("Mod Menu entry point creates the settings screen", screen instanceof SettingsScreen);
+			c.setScreen(screen);
+		});
+		waitTicks("settings screen", 5);
+		run("check settings screen", c -> {
+			check("settings screen is open", c.currentScreen instanceof SettingsScreen);
+			LOGGER.info("[SelfTest] settings screen has {} widgets", c.currentScreen.children().size());
+			check("settings screen has its 5 options and the Done button", c.currentScreen.children().size() == 6);
+		});
+		screenshot("settings_screen");
+		run("close settings", c -> c.currentScreen.close());
+		waitTicks("settings closed", 3);
+		run("check settings closed", c -> check("settings screen closed back to the game", c.currentScreen == null));
+
+		run("open the Mod Menu mod list", c -> {
+			try {
+				Screen mods = (Screen) Class.forName("com.terraformersmc.modmenu.gui.ModsScreen").getConstructor(Screen.class).newInstance(c.currentScreen);
+				c.setScreen(mods);
+			} catch (ReflectiveOperationException e) {
+				LOGGER.warn("[SelfTest] could not open the Mod Menu list (not a failure): {}", e.toString());
+			}
+		});
+		waitTicks("mod list", 10);
+		screenshot("modmenu_list");
+		run("close the mod list", c -> c.setScreen(null));
+		waitTicks("mod list closed", 3);
 	}
 
 	/**
