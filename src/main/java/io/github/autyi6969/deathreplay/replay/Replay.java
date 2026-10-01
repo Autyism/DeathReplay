@@ -220,7 +220,8 @@ public final class Replay {
 
 	/**
 	 * Shows the frozen last frame on the death screen. Called automatically once the recording
-	 * of the current death is ready and the death screen camera is in use.
+	 * of the current death is ready, the death screen camera is in use, and the server has
+	 * taken the live entities away.
 	 */
 	public static boolean showStill(MinecraftClient client) {
 		if (isActive() || !begin(client)) {
@@ -290,8 +291,24 @@ public final class Replay {
 		}
 	}
 
+	/**
+	 * The still replaces a view that has gone empty; it must never replace a live one. On a
+	 * vanilla server every entity is taken away from a dead player one second after the death.
+	 * A server that keeps sending the scene keeps its live view, and no still is shown.
+	 */
 	private static boolean shouldShowStill(MinecraftClient client) {
-		return DeathView.isActive() && isAvailable(client);
+		return DeathView.isActive() && isAvailable(client) && !hasLiveEntitiesNearby(client);
+	}
+
+	private static boolean hasLiveEntitiesNearby(MinecraftClient client) {
+		double maxDistanceSquared = Recorder.CAPTURE_RADIUS * Recorder.CAPTURE_RADIUS;
+		for (Entity entity : client.world.getEntities()) {
+			if (entity != client.player && !entity.isRemoved() && !isPuppet(entity) && entity.squaredDistanceTo(client.player) <= maxDistanceSquared) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/** Ends the replay and puts the world back exactly as the server last described it. */

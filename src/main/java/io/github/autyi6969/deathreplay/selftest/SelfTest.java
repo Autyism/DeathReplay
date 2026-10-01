@@ -459,6 +459,8 @@ public final class SelfTest {
 	private void replayScript() {
 		BlockPos testBlock = new BlockPos(3, -60, 8);
 
+		// The still appears once the server has removed the live entities (20 ticks after death).
+		waitUntil("the frozen last frame is shown", Replay::isStill, 60);
 		run("open replay", c -> {
 			// Chat lines would cover the lower half of every screenshot.
 			c.inGameHud.getChatHud().clear(false);
