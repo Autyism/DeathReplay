@@ -1,0 +1,27 @@
+{
+	"schemaVersion": 1,
+	"id": "deathreplay",
+	"version": "${version}",
+	"name": "Death Replay",
+	"description": "Client-side death replay: rewatch the last 30 seconds before you died, and look around freely on the death screen.",
+	"authors": [
+		"Autyi6969"
+	],
+	"contact": {},
+	"license": "GPL-3.0",
+	"environment": "client",
+	"entrypoints": {
+		"client": [
+			"io.github.autyi6969.deathreplay.DeathReplayClient"
+		]
+	},
+	"mixins": [
+		"deathreplay.mixins.json"
+	],
+	"depends": {
+		"fabricloader": ">=0.19.5",
+		"minecraft": "~1.21.11",
+		"java": ">=21",
+		"fabric-api": "*"
+	}
+}
