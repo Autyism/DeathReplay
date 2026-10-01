@@ -21,6 +21,7 @@ import net.minecraft.SharedConstants;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.entity.EquipmentSlot;
 import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NbtByteArray;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtDouble;
 import net.minecraft.nbt.NbtHelper;
@@ -30,6 +31,7 @@ import net.minecraft.nbt.NbtOps;
 import net.minecraft.network.RegistryByteBuf;
 import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
+import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
@@ -48,32 +50,38 @@ import org.jetbrains.annotations.Nullable;
  * Writes a {@link Recording} to {@code <game dir>/deathreplay/death_<time>.nbt}
  * (gzip-compressed NBT, readable with any NBT editor).
  *
- * <p>Layout, format version 1:
+ * <p>Layout, format version 2 (version 1 had no terrain and cannot be played):
  * <pre>
  * FormatVersion, ModVersion, MinecraftVersion, DataVersion
  * DeathTimeMillis, Dimension, DeathPos[3], DeathMessage, DeathFrame, TickCount
  * Player { Name, UUID, EntityId }
- * Entities [ { EntityId, Type, UUID, Name?,
+ * World { DimensionType, BiomeSeed, SeaLevel, Flat, Time, TimeOfDay, Rain, Thunder,
+ *         CenterChunkX, CenterChunkZ, Radius }
+ * Chunks [ byte[] ]                   the terrain around the death, one chunk packet each
+ * Entities [ { EntityId, Type, UUID, Name?, Local,
  *              Ticks int[]            frame index of each sample
  *              Pos   long[3n]         x, y, z as raw double bits
  *              Rot   int[4n]          yaw, pitch, head yaw, body yaw as raw float bits
  *              Vel   int[3n]          velocity as raw float bits
  *              Vehicle int[n]         vehicle entity id or Integer.MIN_VALUE
+ *              Eye   int[n]           eye height as raw float bits
  *              State int[n]           hurtTime | deathTime&lt;&lt;8 | swingTicks&lt;&lt;16 | flags&lt;&lt;24
  *                                     (flags: 1 on ground, 2 hand swinging, 4 off hand)
  *              Looks [ { Tick, Tracked byte[], Spawn byte[]?, Equipment [ { Slot, Item } ] } ] } ]
  * BlockChanges [ { Tick, X, Y, Z, Old, New } ]
  * Events [ { Tick, Type, Packet byte[] | EntityId + Status | EntityId + Animation } ]
  * </pre>
- * Packet byte arrays are the vanilla network encoding of the packet the client received.
+ * Packet byte arrays are the vanilla network encoding of the packet the client received
+ * (for chunks: of the chunk packet built from the client's own copy of the chunk).
+ * {@link ReplayFileReader} reads this back.
  */
 public final class ReplayFileWriter {
-	public static final int FORMAT_VERSION = 1;
+	public static final int FORMAT_VERSION = 2;
 	public static final String DIRECTORY = "deathreplay";
 	private static final DateTimeFormatter FILE_TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss").withZone(ZoneId.systemDefault());
-	private static final int FLAG_ON_GROUND = 1;
-	private static final int FLAG_HAND_SWINGING = 2;
-	private static final int FLAG_OFF_HAND = 4;
+	static final int FLAG_ON_GROUND = 1;
+	static final int FLAG_HAND_SWINGING = 2;
+	static final int FLAG_OFF_HAND = 4;
 
 	@Nullable
 	private static volatile Path lastSavedFile;
@@ -183,6 +191,31 @@ public final class ReplayFileWriter {
 		player.putInt("EntityId", recording.playerEntityId());
 		root.put("Player", player);
 
+		WorldSnapshot snapshot = recording.snapshot();
+		NbtCompound world = new NbtCompound();
+		world.putString("DimensionType", snapshot.dimensionType().getKey().map(key -> key.getValue().toString()).orElse("minecraft:overworld"));
+		world.putLong("BiomeSeed", snapshot.biomeSeed());
+		world.putInt("SeaLevel", snapshot.seaLevel());
+		world.putBoolean("Flat", snapshot.flat());
+		world.putLong("Time", snapshot.time());
+		world.putLong("TimeOfDay", snapshot.timeOfDay());
+		world.putFloat("Rain", snapshot.rainGradient());
+		world.putFloat("Thunder", snapshot.thunderGradient());
+		world.putInt("CenterChunkX", snapshot.centerChunkX());
+		world.putInt("CenterChunkZ", snapshot.centerChunkZ());
+		world.putInt("Radius", snapshot.radius());
+		root.put("World", world);
+
+		NbtList chunks = new NbtList();
+		for (ChunkDataS2CPacket chunk : snapshot.chunks()) {
+			byte[] bytes = encode(ChunkDataS2CPacket.CODEC, chunk, registries);
+			if (bytes != null) {
+				chunks.add(new NbtByteArray(bytes));
+			}
+		}
+
+		root.put("Chunks", chunks);
+
 		Map<Integer, Track> tracks = new LinkedHashMap<>();
 		NbtList blockChanges = new NbtList();
 		NbtList events = new NbtList();
@@ -279,6 +312,7 @@ public final class ReplayFileWriter {
 		private final IntArrayList rot = new IntArrayList();
 		private final IntArrayList vel = new IntArrayList();
 		private final IntArrayList vehicle = new IntArrayList();
+		private final IntArrayList eye = new IntArrayList();
 		private final IntArrayList state = new IntArrayList();
 		private final NbtList looks = new NbtList();
 		@Nullable
@@ -303,6 +337,7 @@ public final class ReplayFileWriter {
 			this.vel.add(Float.floatToRawIntBits(sample.velocityY));
 			this.vel.add(Float.floatToRawIntBits(sample.velocityZ));
 			this.vehicle.add(sample.vehicleId);
+			this.eye.add(Float.floatToRawIntBits(sample.eyeHeight));
 			int flags = (sample.onGround ? FLAG_ON_GROUND : 0) | (sample.handSwinging ? FLAG_HAND_SWINGING : 0) | (sample.offHandSwing ? FLAG_OFF_HAND : 0);
 			this.state.add(sample.hurtTime & 0xFF | (sample.deathTime & 0xFF) << 8 | (sample.handSwingTicks & 0xFF) << 16 | flags << 24);
 
@@ -327,6 +362,8 @@ public final class ReplayFileWriter {
 			nbt.putIntArray("Rot", this.rot.toIntArray());
 			nbt.putIntArray("Vel", this.vel.toIntArray());
 			nbt.putIntArray("Vehicle", this.vehicle.toIntArray());
+			nbt.putIntArray("Eye", this.eye.toIntArray());
+			nbt.putBoolean("Local", look.localPlayer());
 			nbt.putIntArray("State", this.state.toIntArray());
 			nbt.put("Looks", this.looks);
 			return nbt;

@@ -70,6 +70,34 @@ public final class EntitySample {
 		}
 	}
 
+	/** Rebuilds a sample from stored values (a replay read from a file). */
+	EntitySample(
+		int entityId, double x, double y, double z, float yaw, float pitch, float headYaw, float bodyYaw,
+		float velocityX, float velocityY, float velocityZ, int vehicleId, boolean onGround, float eyeHeight,
+		int hurtTime, int deathTime, boolean handSwinging, int handSwingTicks, boolean offHandSwing, EntityAppearance appearance
+	) {
+		this.entityId = entityId;
+		this.x = x;
+		this.y = y;
+		this.z = z;
+		this.yaw = yaw;
+		this.pitch = pitch;
+		this.headYaw = headYaw;
+		this.bodyYaw = bodyYaw;
+		this.velocityX = velocityX;
+		this.velocityY = velocityY;
+		this.velocityZ = velocityZ;
+		this.vehicleId = vehicleId;
+		this.onGround = onGround;
+		this.eyeHeight = eyeHeight;
+		this.hurtTime = hurtTime;
+		this.deathTime = deathTime;
+		this.handSwinging = handSwinging;
+		this.handSwingTicks = handSwingTicks;
+		this.offHandSwing = offHandSwing;
+		this.appearance = appearance;
+	}
+
 	public Vec3d pos() {
 		return new Vec3d(this.x, this.y, this.z);
 	}

@@ -1,0 +1,182 @@
+package io.github.autyi6969.deathreplay.replay;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.stream.Stream;
+
+import io.github.autyi6969.deathreplay.DeathReplayClient;
+import io.github.autyi6969.deathreplay.record.Recorder;
+import io.github.autyi6969.deathreplay.record.Recording;
+import io.github.autyi6969.deathreplay.record.ReplayFileReader;
+import io.github.autyi6969.deathreplay.record.ReplayFileWriter;
+import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.gui.widget.ButtonWidget;
+import net.minecraft.screen.ScreenTexts;
+import net.minecraft.text.Text;
+import net.minecraft.util.Util;
+import org.jetbrains.annotations.Nullable;
+
+/**
+ * Lists what can be watched: the latest death still in memory, and the replays saved to the
+ * {@code deathreplay} folder (newest first). Replays can only be played while in a world.
+ */
+public class ReplayBrowserScreen extends Screen {
+	private static final int TITLE_COLOR = 0xFFFFFFFF;
+	private static final int NOTE_COLOR = 0xFFC0C0C0;
+	private static final int ERROR_COLOR = 0xFFFF7070;
+	private static final int ROW_WIDTH = 260;
+	private static final int ROW_HEIGHT = 22;
+	private static final int FILES_PER_PAGE = 5;
+	private static final String FILE_PREFIX = "death_";
+	private static final String FILE_SUFFIX = ".nbt";
+
+	@Nullable
+	private final Screen parent;
+	private List<Path> files = List.of();
+	private int page;
+	@Nullable
+	private Text error;
+
+	public ReplayBrowserScreen(@Nullable Screen parent) {
+		super(Text.translatable("deathreplay.browser.title"));
+		this.parent = parent;
+	}
+
+	@Override
+	protected void init() {
+		this.files = listFiles(ReplayFileWriter.directory(this.client));
+		int pages = Math.max(1, (this.files.size() + FILES_PER_PAGE - 1) / FILES_PER_PAGE);
+		this.page = Math.min(this.page, pages - 1);
+		boolean canPlay = Replay.canPlay(this.client);
+		int x = this.width / 2 - ROW_WIDTH / 2;
+		int y = 34;
+
+		Recording latest = Recorder.getLast();
+		ButtonWidget latestButton = ButtonWidget.builder(Text.translatable("deathreplay.browser.latest"), button -> {
+			if (!Replay.open(this.client)) {
+				this.error = Text.translatable("deathreplay.browser.cannot_play");
+			}
+		}).dimensions(x, y, ROW_WIDTH, 20).build();
+		latestButton.active = latest != null && canPlay;
+		this.addDrawableChild(latestButton);
+		y += ROW_HEIGHT + 6;
+
+		for (int i = this.page * FILES_PER_PAGE; i < Math.min(this.files.size(), (this.page + 1) * FILES_PER_PAGE); i++) {
+			Path file = this.files.get(i);
+			ButtonWidget button = ButtonWidget.builder(label(file), pressed -> this.play(file)).dimensions(x, y, ROW_WIDTH, 20).build();
+			button.active = canPlay;
+			this.addDrawableChild(button);
+			y += ROW_HEIGHT;
+		}
+
+		int bottom = this.height - 28;
+		int quarter = (ROW_WIDTH - 12) / 4;
+		ButtonWidget previous = ButtonWidget.builder(Text.translatable("deathreplay.browser.previous"), button -> this.turnPage(-1)).dimensions(x, bottom, quarter, 20).build();
+		ButtonWidget next = ButtonWidget.builder(Text.translatable("deathreplay.browser.next"), button -> this.turnPage(1)).dimensions(x + quarter + 4, bottom, quarter, 20).build();
+		previous.active = this.page > 0;
+		next.active = this.page < pages - 1;
+		this.addDrawableChild(previous);
+		this.addDrawableChild(next);
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.browser.open_folder"), button -> this.openFolder())
+			.dimensions(x + (quarter + 4) * 2, bottom, quarter, 20).build());
+		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.BACK, button -> this.close())
+			.dimensions(x + (quarter + 4) * 3, bottom, quarter, 20).build());
+	}
+
+	private void turnPage(int direction) {
+		this.page = Math.max(0, this.page + direction);
+		this.clearAndInit();
+	}
+
+	private void openFolder() {
+		Path directory = ReplayFileWriter.directory(this.client);
+		try {
+			Files.createDirectories(directory);
+			Util.getOperatingSystem().open(directory);
+		} catch (IOException e) {
+			DeathReplayClient.LOGGER.warn("Could not open {}", directory, e);
+		}
+	}
+
+	/** Loads a saved replay and plays it. Public so the self-test can go through the same path as a click. */
+	public void play(Path file) {
+		this.error = null;
+		if (!Replay.canPlay(this.client)) {
+			this.error = Text.translatable("deathreplay.browser.need_world");
+			return;
+		}
+
+		try {
+			Recording recording = ReplayFileReader.read(file, this.client.world.getRegistryManager());
+			if (!Replay.open(this.client, recording)) {
+				this.error = Text.translatable("deathreplay.browser.cannot_play");
+			}
+		} catch (IOException e) {
+			DeathReplayClient.LOGGER.warn("Could not read replay {}", file, e);
+			this.error = Text.translatable("deathreplay.browser.unreadable", file.getFileName().toString());
+		}
+	}
+
+	/** Saved replays, newest first. */
+	public static List<Path> listFiles(Path directory) {
+		if (!Files.isDirectory(directory)) {
+			return List.of();
+		}
+
+		try (Stream<Path> stream = Files.list(directory)) {
+			List<Path> found = new ArrayList<>(stream
+				.filter(path -> path.getFileName().toString().startsWith(FILE_PREFIX) && path.getFileName().toString().endsWith(FILE_SUFFIX))
+				.toList());
+			found.sort(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed());
+			return found;
+		} catch (IOException e) {
+			DeathReplayClient.LOGGER.warn("Could not list {}", directory, e);
+			return List.of();
+		}
+	}
+
+	/** "death_2026-10-01_12-32-27.nbt" becomes "2026-10-01 12:32:27  (25 KB)". */
+	private static Text label(Path file) {
+		String name = file.getFileName().toString();
+		String stamp = name.substring(FILE_PREFIX.length(), name.length() - FILE_SUFFIX.length());
+		int split = stamp.indexOf('_');
+		String shown = split > 0 ? stamp.substring(0, split) + " " + stamp.substring(split + 1).replaceFirst("-", ":").replaceFirst("-", ":") : stamp;
+		long kiloBytes;
+		try {
+			kiloBytes = Math.max(1L, Files.size(file) / 1024L);
+		} catch (IOException e) {
+			kiloBytes = 0L;
+		}
+
+		return Text.translatable("deathreplay.browser.file", shown, kiloBytes);
+	}
+
+	@Override
+	public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+		super.render(context, mouseX, mouseY, deltaTicks);
+		int centerX = this.width / 2;
+		context.drawCenteredTextWithShadow(this.textRenderer, this.title, centerX, 14, TITLE_COLOR);
+
+		int noteY = this.height - 44;
+		if (this.error != null) {
+			context.drawCenteredTextWithShadow(this.textRenderer, this.error, centerX, noteY, ERROR_COLOR);
+		} else if (!Replay.canPlay(this.client)) {
+			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.browser.need_world"), centerX, noteY, NOTE_COLOR);
+		} else if (this.files.isEmpty()) {
+			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.browser.empty"), centerX, noteY, NOTE_COLOR);
+		} else {
+			int pages = (this.files.size() + FILES_PER_PAGE - 1) / FILES_PER_PAGE;
+			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.browser.page", this.page + 1, pages, this.files.size()), centerX, noteY, NOTE_COLOR);
+		}
+	}
+
+	@Override
+	public void close() {
+		this.client.setScreen(this.parent);
+	}
+}

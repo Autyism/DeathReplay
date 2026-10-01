@@ -25,9 +25,11 @@ import io.github.autyi6969.deathreplay.record.Frame;
 import io.github.autyi6969.deathreplay.record.RecordedEvent;
 import io.github.autyi6969.deathreplay.record.Recorder;
 import io.github.autyi6969.deathreplay.record.Recording;
+import io.github.autyi6969.deathreplay.record.ReplayFileReader;
 import io.github.autyi6969.deathreplay.record.ReplayFileWriter;
 import io.github.autyi6969.deathreplay.replay.PuppetPlayerEntity;
 import io.github.autyi6969.deathreplay.replay.Replay;
+import io.github.autyi6969.deathreplay.replay.ReplayBrowserScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayView;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -92,6 +94,7 @@ public final class SelfTest {
 	private boolean finished;
 	private int realBufferSeconds;
 	private boolean realAutoSave;
+	private Set<Path> replayFilesBefore = Set.of();
 
 	private SelfTest() {
 	}
@@ -118,6 +121,7 @@ public final class SelfTest {
 			DeathReplayConfig.get().bufferSeconds = TEST_BUFFER_SECONDS;
 			DeathReplayConfig.get().autoSave = true;
 			deleteOldScreenshots(c);
+			this.replayFilesBefore = Set.copyOf(ReplayBrowserScreen.listFiles(ReplayFileWriter.directory(c)));
 		});
 		run("open world", this::openWorld);
 		waitUntil("in world", c -> c.world != null && c.player != null && c.getOverlay() == null, 20 * 120);
@@ -197,8 +201,19 @@ public final class SelfTest {
 
 		respawnDuringReplayScript();
 		combatScript();
+		savedFileScript();
 		settingsScript();
 		performanceScript();
+		run("delete the replay files this run saved", c -> {
+			int deleted = 0;
+			for (Path file : ReplayBrowserScreen.listFiles(ReplayFileWriter.directory(c))) {
+				if (!this.replayFilesBefore.contains(file) && file.toFile().delete()) {
+					deleted++;
+				}
+			}
+
+			LOGGER.info("[SelfTest] deleted the {} replay files saved by this run", deleted);
+		});
 		// Screenshots are written on a background thread; give them time to land on disk.
 		waitTicks("flush screenshots", 40);
 	}
@@ -397,6 +412,86 @@ public final class SelfTest {
 		return count;
 	}
 
+	/** Saved files: what was written can be read back, listed and played. Runs while alive. */
+	private void savedFileScript() {
+		Recording[] loaded = new Recording[1];
+
+		run("read the saved replay back", c -> {
+			Recording original = Recorder.getLast();
+			Path file = ReplayFileWriter.getLastSavedFile();
+			check("the latest death was saved to a file", original != null && file != null && ReplayFileWriter.isSaved(original));
+			try {
+				loaded[0] = ReplayFileReader.read(file, c.world.getRegistryManager());
+			} catch (IOException e) {
+				fail("could not read " + file + ": " + e);
+				return;
+			}
+
+			Recording copy = loaded[0];
+			LOGGER.info("[SelfTest] read back {} ({} bytes): {} ticks, {} chunks", file.getFileName(), file.toFile().length(), copy.tickCount(), copy.snapshot().chunks().size());
+			check("same length and death tick", copy.tickCount() == original.tickCount() && copy.deathFrame() == original.deathFrame());
+			check("same terrain", copy.snapshot().chunks().size() == original.snapshot().chunks().size() && copy.snapshot().dimension() == original.snapshot().dimension());
+			check("same death message", original.deathMessage() != null && copy.deathMessage() != null && original.deathMessage().getString().equals(copy.deathMessage().getString()));
+			boolean sameFrames = true;
+			int eventsOriginal = 0;
+			int eventsCopy = 0;
+			for (int i = 0; i < original.tickCount(); i++) {
+				Frame a = original.frames().get(i);
+				Frame b = copy.frames().get(i);
+				eventsOriginal += a.events().length;
+				eventsCopy += b.events().length;
+				sameFrames &= a.entities().length == b.entities().length;
+				for (EntitySample sample : a.entities()) {
+					EntitySample other = b.find(sample.entityId);
+					sameFrames &= other != null
+						&& other.x == sample.x && other.y == sample.y && other.z == sample.z
+						&& other.yaw == sample.yaw && other.pitch == sample.pitch && other.headYaw == sample.headYaw
+						&& other.eyeHeight == sample.eyeHeight && other.vehicleId == sample.vehicleId
+						&& other.handSwingTicks == sample.handSwingTicks && other.deathTime == sample.deathTime
+						&& other.appearance.type() == sample.appearance.type()
+						&& other.appearance.trackedData().size() == sample.appearance.trackedData().size()
+						&& (other.appearance.equipment() == null) == (sample.appearance.equipment() == null);
+				}
+			}
+
+			check("every entity sample of every tick is identical", sameFrames);
+			check("same number of events", eventsOriginal == eventsCopy && eventsCopy > 0);
+		});
+
+		run("open the replay list", c -> c.setScreen(new ReplayBrowserScreen(null)));
+		waitTicks("replay list", 5);
+		run("check the replay list", c -> {
+			check("the replay list is open", c.currentScreen instanceof ReplayBrowserScreen);
+			int saved = ReplayBrowserScreen.listFiles(ReplayFileWriter.directory(c)).size();
+			LOGGER.info("[SelfTest] replay list: {} saved files, {} widgets", saved, c.currentScreen.children().size());
+			check("saved replays are listed", saved >= 1 && c.currentScreen.children().size() >= 6);
+		});
+		screenshot("replay_list");
+		run("play the newest saved file from the list", c -> {
+			ReplayBrowserScreen browser = (ReplayBrowserScreen) c.currentScreen;
+			browser.play(ReplayBrowserScreen.listFiles(ReplayFileWriter.directory(c)).getFirst());
+		});
+		waitTicks("replay from file runs", 15);
+		run("check the replay from the file", c -> {
+			check("a replay read from a file plays", c.currentScreen instanceof ReplayScreen && Replay.isPlayback() && Replay.getStage() != null);
+			check("it is the file's recording, not the one in memory", Replay.getRecording() != null && Replay.getRecording() != Recorder.getLast());
+			LOGGER.info("[SelfTest] replay from file: {} puppets at tick {}", Replay.puppetCount(), Replay.getTick());
+			check("its actors are on stage", Replay.puppetCount() >= 3 && Replay.getPlayerPuppet() instanceof PuppetPlayerEntity);
+			check("its terrain is on stage", Replay.getStage().getBlockState(new BlockPos(2, -60, 3)).isOf(Blocks.GOLD_BLOCK));
+			Replay.seek(Replay.getRecording().deathFrame() - 6);
+			Replay.setPlaying(false);
+		});
+		waitTicks("paused before the death", 5);
+		screenshot("replay_from_file");
+		run("close the replay from the file", c -> c.currentScreen.close());
+		waitTicks("back in the list", 3);
+		run("check the list is back, then close it", c -> {
+			check("closing the replay returns to the list", c.currentScreen instanceof ReplayBrowserScreen && !Replay.isActive());
+			c.currentScreen.close();
+		});
+		waitTicks("list closed", 3);
+	}
+
 	/** Feature (d): settings screen and Mod Menu entry. Runs while alive, with no screen open. */
 	private void settingsScript() {
 		run("restore the real settings", c -> {
@@ -434,7 +529,7 @@ public final class SelfTest {
 		run("check settings screen", c -> {
 			check("settings screen is open", c.currentScreen instanceof SettingsScreen);
 			LOGGER.info("[SelfTest] settings screen has {} widgets", c.currentScreen.children().size());
-			check("settings screen has its 6 options and the Done button", c.currentScreen.children().size() == 7);
+			check("settings screen has its 6 options, the replay list button and Done", c.currentScreen.children().size() == 8);
 		});
 		screenshot("settings_screen");
 		run("close settings", c -> c.currentScreen.close());

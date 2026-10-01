@@ -3,6 +3,7 @@ package io.github.autyi6969.deathreplay.config;
 import java.util.List;
 
 import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
+import io.github.autyi6969.deathreplay.replay.ReplayBrowserScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayView;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
@@ -70,8 +71,12 @@ public class SettingsScreen extends Screen {
 			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.death_camera_mode"), (button, value) -> this.config.deathCameraMode = value));
 		y += ROW_HEIGHT + 8;
 
+		int half = (WIDGET_WIDTH - 4) / 2;
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.options.browse"), button -> this.client.setScreen(new ReplayBrowserScreen(this)))
+			.dimensions(x, y, half, WIDGET_HEIGHT)
+			.build());
 		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, button -> this.close())
-			.dimensions(this.width / 2 - 100, y, 200, WIDGET_HEIGHT)
+			.dimensions(x + half + 4, y, half, WIDGET_HEIGHT)
 			.build());
 	}
 

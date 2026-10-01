@@ -6,6 +6,7 @@ import io.github.autyi6969.deathreplay.death.DeathScreenButtons;
 import io.github.autyi6969.deathreplay.death.DeathView;
 import io.github.autyi6969.deathreplay.record.Recorder;
 import io.github.autyi6969.deathreplay.replay.Replay;
+import io.github.autyi6969.deathreplay.replay.ReplayBrowserScreen;
 import io.github.autyi6969.deathreplay.selftest.SelfTest;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
@@ -55,8 +56,9 @@ public class DeathReplayClient implements ClientModInitializer {
 		}
 
 		while (watchReplayKey.wasPressed()) {
+			// No death in memory (for example right after starting the game): offer the saved ones.
 			if (client.currentScreen == null && client.player != null && !Replay.open(client)) {
-				client.player.sendMessage(Text.translatable("deathreplay.message.no_replay"), true);
+				client.setScreen(new ReplayBrowserScreen(null));
 			}
 		}
 	}
