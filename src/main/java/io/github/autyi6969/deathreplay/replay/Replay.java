@@ -69,8 +69,6 @@ public final class Replay {
 	public static final double MAX_DISTANCE = 20.0;
 	public static final double MIN_FLY_SPEED = 2.0;
 	public static final double MAX_FLY_SPEED = 40.0;
-	/** Free flight stays within this radius of the death position. */
-	public static final double MAX_FREE_RADIUS = 64.0;
 	private static final double DEFAULT_DISTANCE = 5.0;
 	private static final double DEFAULT_FLY_SPEED = 10.0;
 	private static final double SPRINT_MULTIPLIER = 2.5;
@@ -695,7 +693,7 @@ public final class Replay {
 				double strafe = MathHelper.clamp(input.strafe + SYNTHETIC_INPUT.strafe, -1.0, 1.0);
 				double up = MathHelper.clamp(input.up + SYNTHETIC_INPUT.up, -1.0, 1.0);
 				double speed = flySpeed * (input.sprint || SYNTHETIC_INPUT.sprint ? SPRINT_MULTIPLIER : 1.0);
-				CAMERA.fly(recording.deathPos(), MAX_FREE_RADIUS, forward, strafe, up, speed * seconds);
+				CAMERA.fly(forward, strafe, up, speed * seconds);
 			}
 		}
 

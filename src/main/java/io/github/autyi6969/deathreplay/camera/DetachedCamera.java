@@ -71,10 +71,10 @@ public final class DetachedCamera {
 
 	/**
 	 * Free flight. {@code forward}/{@code strafe} are relative to the current yaw (strafe is
-	 * positive to the left), {@code up} is world-vertical; each in -1..1. Blocks do not stop the
-	 * camera. It cannot go further than {@code maxRadius} from {@code anchor}.
+	 * positive to the left), {@code up} is world-vertical; each in -1..1. Nothing stops the
+	 * camera: not blocks, not distance.
 	 */
-	public void fly(Vec3d anchor, double maxRadius, double forward, double strafe, double up, double blocks) {
+	public void fly(double forward, double strafe, double up, double blocks) {
 		if (forward == 0.0 && strafe == 0.0 && up == 0.0) {
 			return;
 		}
@@ -88,13 +88,6 @@ public final class DetachedCamera {
 			wish = wish.normalize();
 		}
 
-		Vec3d next = this.pos.add(wish.multiply(blocks));
-		Vec3d fromAnchor = next.subtract(anchor);
-		if (fromAnchor.lengthSquared() > maxRadius * maxRadius) {
-			// Slide along the boundary sphere instead of stopping dead.
-			next = anchor.add(fromAnchor.normalize().multiply(maxRadius));
-		}
-
-		this.pos = next;
+		this.pos = this.pos.add(wish.multiply(blocks));
 	}
 }
