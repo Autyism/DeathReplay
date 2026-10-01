@@ -1,5 +1,6 @@
 package io.github.autyi6969.deathreplay;
 
+import io.github.autyi6969.deathreplay.selftest.SelfTest;
 import net.fabricmc.api.ClientModInitializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -11,5 +12,9 @@ public class DeathReplayClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		LOGGER.info("Death Replay initialized");
+
+		if (SelfTest.ENABLED) {
+			SelfTest.register();
+		}
 	}
 }
