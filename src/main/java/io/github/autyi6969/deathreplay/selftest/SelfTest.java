@@ -1,15 +1,27 @@
 package io.github.autyi6969.deathreplay.selftest;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.Deque;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
 import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
 import io.github.autyi6969.deathreplay.camera.DetachedCamera;
+import io.github.autyi6969.deathreplay.config.DeathReplayConfig;
 import io.github.autyi6969.deathreplay.death.DeathSpectateScreen;
 import io.github.autyi6969.deathreplay.death.DeathView;
+import io.github.autyi6969.deathreplay.record.EntitySample;
+import io.github.autyi6969.deathreplay.record.Frame;
+import io.github.autyi6969.deathreplay.record.RecordedEvent;
+import io.github.autyi6969.deathreplay.record.Recorder;
+import io.github.autyi6969.deathreplay.record.Recording;
+import io.github.autyi6969.deathreplay.record.ReplayFileWriter;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.DeathScreen;
@@ -18,6 +30,13 @@ import net.minecraft.client.option.Perspective;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.tutorial.TutorialStep;
 import net.minecraft.client.util.ScreenshotRecorder;
+import net.minecraft.entity.EntityType;
+import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.item.Items;
+import net.minecraft.nbt.NbtCompound;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.nbt.NbtSizeTracker;
+import net.minecraft.registry.Registries;
 import net.minecraft.resource.DataConfiguration;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.Difficulty;
@@ -45,6 +64,7 @@ public final class SelfTest {
 	private static final String SCREENSHOT_PREFIX = "selftest_";
 	/** Hard stop for the whole run, in wall-clock time. */
 	private static final long MAX_RUN_MILLIS = 4 * 60 * 1000L;
+	private static final int TEST_BUFFER_SECONDS = 6;
 
 	private final Deque<Step> steps = new ArrayDeque<>();
 	private Step current;
@@ -73,6 +93,9 @@ public final class SelfTest {
 			c.options.pauseOnLostFocus = false;
 			// The "Move with WASD" tutorial toast would cover a corner of every screenshot.
 			c.getTutorialManager().setStep(TutorialStep.NONE);
+			// In memory only (never saved): a short buffer so the test can fill it, and auto-save on.
+			DeathReplayConfig.get().bufferSeconds = TEST_BUFFER_SECONDS;
+			DeathReplayConfig.get().autoSave = true;
 			deleteOldScreenshots(c);
 		});
 		run("open world", this::openWorld);
@@ -94,8 +117,27 @@ public final class SelfTest {
 			// Landmarks, so the screenshots show where the camera is looking from.
 			command(c, "fill 2 -60 3 2 -58 3 minecraft:gold_block");
 			command(c, "fill -3 -60 4 -2 -60 4 minecraft:stone");
+			// Known actors for the recorder: leftovers of earlier runs out, fresh ones in.
+			command(c, "kill @e[type=minecraft:pig]");
+			command(c, "kill @e[type=minecraft:armor_stand]");
+			command(c, "kill @e[type=minecraft:item]");
+			command(c, "setblock 3 -60 8 minecraft:air");
+			command(c, "summon minecraft:pig 4 -60 10");
+			command(c, "summon minecraft:armor_stand -2 -60 9 {equipment:{head:{id:\"minecraft:diamond_helmet\"}}}");
 		});
-		waitTicks("wait before death", 80);
+		waitTicks("scene settles", 20);
+		run("walk forward", c -> c.options.forwardKey.setPressed(true));
+		waitTicks("walking", 30);
+		run("stop walking", c -> c.options.forwardKey.setPressed(false));
+		waitTicks("stand", 10);
+		run("make things happen", c -> {
+			command(c, "setblock 3 -60 8 minecraft:diamond_block");
+			command(c, "particle minecraft:flame 0.5 -58 10 0.3 0.3 0.3 0.02 30");
+			command(c, "playsound minecraft:block.anvil.land master @s 0.5 -60 10");
+		});
+		waitTicks("block stays", 20);
+		run("remove the block again", c -> command(c, "setblock 3 -60 8 minecraft:air"));
+		waitTicks("wait before death", 40);
 		screenshot("alive");
 
 		run("kill player", c -> command(c, "kill @s"));
@@ -104,6 +146,7 @@ public final class SelfTest {
 		screenshot("death_screen_t10");
 		waitTicks("death screen t40", 30);
 
+		recorderScript();
 		deathCameraScript();
 
 		run("respawn", c -> c.player.requestRespawn());
@@ -121,6 +164,86 @@ public final class SelfTest {
 		screenshot("after_respawn");
 		// Screenshots are written on a background thread; give them time to land on disk.
 		waitTicks("flush screenshots", 40);
+	}
+
+	/** Feature (b): the recorder. Runs on the death screen, after the recording has been frozen. */
+	private void recorderScript() {
+		waitUntil("recording frozen", () -> Recorder.getFrozen() != null, 60);
+		run("check the frozen recording", c -> {
+			Recording recording = Recorder.getFrozen();
+			int window = TEST_BUFFER_SECONDS * Recording.TICKS_PER_SECOND;
+			LOGGER.info("[SelfTest] recording: {} ticks, death at tick {}", recording.tickCount(), recording.deathFrame());
+			check("ring buffer kept exactly the last " + TEST_BUFFER_SECONDS + " s before death", recording.deathFrame() == window - 1);
+			check("death tail was appended", recording.tickCount() == window + Recorder.DEATH_TAIL_TICKS);
+
+			int blockChanges = 0;
+			int particles = 0;
+			int sounds = 0;
+			int damage = 0;
+			Set<String> types = new TreeSet<>();
+			for (Frame frame : recording.frames()) {
+				for (EntitySample sample : frame.entities()) {
+					types.add(Registries.ENTITY_TYPE.getId(sample.appearance.type()).getPath());
+				}
+
+				for (RecordedEvent event : frame.events()) {
+					switch (event) {
+						case RecordedEvent.BlockChange e -> blockChanges++;
+						case RecordedEvent.Particle e -> particles++;
+						case RecordedEvent.Sound e -> sounds++;
+						case RecordedEvent.EntityDamage e -> damage++;
+						default -> {
+						}
+					}
+				}
+			}
+
+			LOGGER.info("[SelfTest] recorded entity types: {}", types);
+			LOGGER.info("[SelfTest] recorded events: {} block changes, {} particle packets, {} sound packets, {} damage packets", blockChanges, particles, sounds, damage);
+			check("the player was recorded", types.contains("player"));
+			check("the pig was recorded", types.contains("pig"));
+			check("the armor stand was recorded", types.contains("armor_stand"));
+			check("both block changes were recorded", blockChanges >= 2);
+			check("the particle packet was recorded", particles >= 1);
+			check("the sound packet was recorded", sounds >= 1);
+
+			EntitySample first = recording.playerAt(0);
+			EntitySample atDeath = recording.playerAt(recording.deathFrame());
+			EntitySample last = recording.playerAt(recording.tickCount() - 1);
+			double walked = first.pos().distanceTo(atDeath.pos());
+			LOGGER.info("[SelfTest] player moved {} blocks inside the recording", String.format("%.2f", walked));
+			check("the player's walk was recorded", walked > 3.0);
+			check("the death animation is in the tail", last.deathTime > 0);
+
+			EntitySample stand = null;
+			for (EntitySample sample : recording.frames().get(recording.deathFrame()).entities()) {
+				if (sample.appearance.type() == EntityType.ARMOR_STAND) {
+					stand = sample;
+				}
+			}
+
+			check("armor stand equipment was recorded", stand != null && stand.appearance.equipment() != null
+				&& stand.appearance.equipment()[EquipmentSlot.HEAD.ordinal()].isOf(Items.DIAMOND_HELMET));
+			check("spawn packet was kept for the armor stand", stand != null && stand.appearance.spawnPacket() != null);
+		});
+
+		waitUntil("recording saved to disk", () -> ReplayFileWriter.getLastSavedFile() != null, 100);
+		run("check the saved file", c -> {
+			Path file = ReplayFileWriter.getLastSavedFile();
+			try {
+				NbtCompound nbt = NbtIo.readCompressed(file, NbtSizeTracker.ofUnlimitedBytes());
+				LOGGER.info("[SelfTest] saved file {} ({} bytes): {} ticks, {} entity tracks, {} block changes, {} events",
+					file, Files.size(file), nbt.getInt("TickCount", -1), nbt.getListOrEmpty("Entities").size(),
+					nbt.getListOrEmpty("BlockChanges").size(), nbt.getListOrEmpty("Events").size());
+				check("file is in the deathreplay folder", file.getParent().equals(c.runDirectory.toPath().resolve("deathreplay")));
+				check("file has the same tick count", nbt.getInt("TickCount", -1) == Recorder.getFrozen().tickCount());
+				check("file has entity tracks", nbt.getListOrEmpty("Entities").size() >= 3);
+				check("file has the block changes", nbt.getListOrEmpty("BlockChanges").size() >= 2);
+				check("file has events", !nbt.getListOrEmpty("Events").isEmpty());
+			} catch (IOException e) {
+				fail("could not read back " + file + ": " + e);
+			}
+		});
 	}
 
 	/** Feature (a): death screen free camera. Runs while the death screen is open. */

@@ -24,6 +24,10 @@ public final class DeathReplayConfig {
 	private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 	private static DeathReplayConfig instance;
 
+	/** How many seconds before the death are kept in memory. */
+	public int bufferSeconds = 30;
+	/** Write every death recording to disk automatically. */
+	public boolean autoSave = false;
 	/** Death screen free camera on/off. */
 	public boolean deathFreeCamera = true;
 	/** Camera mode the death screen starts in. */
@@ -73,6 +77,7 @@ public final class DeathReplayConfig {
 
 	/** Repairs values a hand-edited file may have broken. */
 	private void sanitize() {
+		this.bufferSeconds = Math.max(MIN_BUFFER_SECONDS, Math.min(MAX_BUFFER_SECONDS, this.bufferSeconds));
 		if (this.deathCameraMode == null) {
 			this.deathCameraMode = DeathCameraMode.THIRD_PERSON;
 		}
