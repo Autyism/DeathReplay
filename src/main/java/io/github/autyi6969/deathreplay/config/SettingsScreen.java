@@ -5,6 +5,7 @@ import java.util.List;
 import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
 import io.github.autyi6969.deathreplay.replay.ReplayBrowserScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayView;
+import io.github.autyi6969.deathreplay.waypoint.WaypointListScreen;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.tooltip.Tooltip;
@@ -39,7 +40,7 @@ public class SettingsScreen extends Screen {
 	@Override
 	protected void init() {
 		int x = this.width / 2 - WIDGET_WIDTH / 2;
-		int y = Math.max(30, this.height / 2 - 4 * ROW_HEIGHT + 6);
+		int y = Math.max(28, this.height / 2 - 4 * ROW_HEIGHT - 8);
 
 		this.addDrawableChild(new BufferSlider(x, y, this.config));
 		y += ROW_HEIGHT;
@@ -69,14 +70,19 @@ public class SettingsScreen extends Screen {
 			.values(List.of(DeathCameraMode.values()))
 			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.death_camera_mode.tooltip")))
 			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.death_camera_mode"), (button, value) -> this.config.deathCameraMode = value));
-		y += ROW_HEIGHT + 8;
+		y += ROW_HEIGHT + 4;
 
 		int half = (WIDGET_WIDTH - 4) / 2;
 		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.options.browse"), button -> this.client.setScreen(new ReplayBrowserScreen(this)))
 			.dimensions(x, y, half, WIDGET_HEIGHT)
 			.build());
-		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, button -> this.close())
+		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.options.waypoints"), button -> this.client.setScreen(new WaypointListScreen(this)))
 			.dimensions(x + half + 4, y, half, WIDGET_HEIGHT)
+			.build());
+		y += ROW_HEIGHT;
+
+		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, button -> this.close())
+			.dimensions(this.width / 2 - 100, y, 200, WIDGET_HEIGHT)
 			.build());
 	}
 

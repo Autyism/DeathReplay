@@ -20,6 +20,7 @@ import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
 import io.github.autyi6969.deathreplay.camera.DetachedCamera;
 import io.github.autyi6969.deathreplay.config.DeathReplayConfig;
 import io.github.autyi6969.deathreplay.config.SettingsScreen;
+import io.github.autyi6969.deathreplay.death.DeathScreenButtons;
 import io.github.autyi6969.deathreplay.death.DeathSpectateScreen;
 import io.github.autyi6969.deathreplay.death.DeathView;
 import io.github.autyi6969.deathreplay.record.EntitySample;
@@ -34,6 +35,9 @@ import io.github.autyi6969.deathreplay.replay.Replay;
 import io.github.autyi6969.deathreplay.replay.ReplayBrowserScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayScreen;
 import io.github.autyi6969.deathreplay.replay.ReplayView;
+import io.github.autyi6969.deathreplay.waypoint.WaypointHud;
+import io.github.autyi6969.deathreplay.waypoint.WaypointListScreen;
+import io.github.autyi6969.deathreplay.waypoint.Waypoints;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.Blocks;
@@ -42,11 +46,13 @@ import net.minecraft.client.gui.Click;
 import net.minecraft.client.input.MouseInput;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.client.gui.screen.DeathScreen;
+import net.minecraft.client.gui.screen.GameMenuScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.option.Perspective;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.tutorial.TutorialStep;
 import net.minecraft.client.util.ScreenshotRecorder;
+import net.minecraft.command.argument.EntityAnchorArgumentType;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
@@ -149,6 +155,7 @@ public final class SelfTest {
 			// Landmarks, so the screenshots show where the camera is looking from.
 			command(c, "fill 2 -60 3 2 -58 3 minecraft:gold_block");
 			command(c, "fill -3 -60 4 -2 -60 4 minecraft:stone");
+			Waypoints.clear(c);
 			// A 48-block cube of solid stone with a lit room in its middle, for the "free camera
 			// inside rock" check. Built once; it stays in the self-test world.
 			if (!c.world.getBlockState(new BlockPos(33, -31, 33)).isOf(Blocks.STONE) || !c.world.getBlockState(new BlockPos(55, -12, 55)).isOf(Blocks.GLOWSTONE)) {
@@ -217,6 +224,43 @@ public final class SelfTest {
 			check("perspective setting untouched", c.options.getPerspective() == Perspective.FIRST_PERSON);
 		});
 		screenshot("after_respawn");
+
+		run("turn towards the marker", c -> {
+			List<Waypoints.Marker> markers = Waypoints.current(c);
+			check("the marker survived the respawn", markers.size() == 1);
+			if (!markers.isEmpty()) {
+				// The client decides where the player looks; no command needed.
+				c.player.lookAt(EntityAnchorArgumentType.EntityAnchor.EYES, markers.getFirst().center());
+			}
+		});
+		waitTicks("facing the marker", 10);
+		run("check the marker in normal play", c -> {
+			c.inGameHud.getChatHud().clear(false);
+			List<Waypoints.Marker> markers = Waypoints.current(c);
+			if (!markers.isEmpty()) {
+				int width = c.getWindow().getScaledWidth();
+				int height = c.getWindow().getScaledHeight();
+				Vec3d onScreen = WaypointHud.screenPos(c, markers.getFirst(), width, height);
+				LOGGER.info("[SelfTest] marker label at {} on a {}x{} screen", onScreen, width, height);
+				check("looking at the marker puts its label in the middle of the screen", onScreen != null
+					&& Math.abs(onScreen.x - width / 2.0) < width * 0.06 && Math.abs(onScreen.y - height / 2.0) < height * 0.08);
+			}
+
+			check("the marker is on the locator bar after respawning", c.getNetworkHandler().getWaypointHandler().hasWaypoint());
+		});
+		waitTicks("label drawn", 3);
+		screenshot("marker_after_respawn");
+		run("open the marker list", c -> c.setScreen(new WaypointListScreen(null)));
+		waitTicks("marker list", 5);
+		screenshot("marker_list");
+		run("delete the marker", c -> {
+			check("the marker list is open with a delete button", c.currentScreen instanceof WaypointListScreen && c.currentScreen.children().size() == 5);
+			Waypoints.current(c).forEach(marker -> Waypoints.remove(c, marker));
+			c.setScreen(null);
+		});
+		waitTicks("marker gone", 3);
+		run("check the marker is gone", c ->
+			check("deleting removes the marker and its locator bar dot", Waypoints.current(c).isEmpty() && !c.getNetworkHandler().getWaypointHandler().hasWaypoint()));
 
 		respawnDuringReplayScript();
 		combatScript();
@@ -611,7 +655,7 @@ public final class SelfTest {
 		run("check settings screen", c -> {
 			check("settings screen is open", c.currentScreen instanceof SettingsScreen);
 			LOGGER.info("[SelfTest] settings screen has {} widgets", c.currentScreen.children().size());
-			check("settings screen has its 6 options, the replay list button and Done", c.currentScreen.children().size() == 8);
+			check("settings screen has its 6 options, the two list buttons and Done", c.currentScreen.children().size() == 9);
 		});
 		screenshot("settings_screen");
 		run("close settings", c -> c.currentScreen.close());
@@ -783,11 +827,22 @@ public final class SelfTest {
 		run("hold the right mouse button to look", c -> {
 			ReplayScreen screen = (ReplayScreen) c.currentScreen;
 			Click right = new Click(screen.width / 2.0, screen.height / 2.0, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0));
+			int markersBefore = Waypoints.current(c).size();
 			screen.mouseClicked(right, false);
-			// The mouse can only be grabbed while the window has focus, which an unattended run may not have.
 			// The self-test keeps its hands off the real mouse, so only the handler path is exercised.
 			screen.mouseReleased(right);
 			check("releasing the right button frees the mouse", !Replay.isLooking());
+			// Pressed and released at once, without turning: that is a click, and a click marks the spot.
+			List<Waypoints.Marker> markers = Waypoints.current(c);
+			check("a short right click in the replay marks the spot under the cursor", markers.size() == markersBefore + 1);
+			if (markers.size() > markersBefore) {
+				Waypoints.Marker marker = markers.getLast();
+				LOGGER.info("[SelfTest] replay marker '{}' at {}, {}, {}", marker.name, marker.x, marker.y, marker.z);
+				Vec3d onScreen = WaypointHud.screenPos(c, marker, screen.width, screen.height);
+				check("the replay marker is where the cursor was (the middle of the screen)", onScreen != null
+					&& Math.abs(onScreen.x - screen.width / 2.0) < screen.width * 0.06 && Math.abs(onScreen.y - screen.height / 2.0) < screen.height * 0.08);
+				Waypoints.remove(c, marker);
+			}
 		});
 		screenshot("replay_paused_by_button");
 	}
@@ -1021,6 +1076,26 @@ public final class SelfTest {
 		waitTicks("free view", 5);
 		screenshot("spectate_free");
 
+		run("right click in the free camera to mark the spot", c -> {
+			Screen screen = c.currentScreen;
+			int before = Waypoints.current(c).size();
+			check("the right click is taken", screen.mouseClicked(new Click(screen.width / 2.0, screen.height / 2.0, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0)), false));
+			List<Waypoints.Marker> markers = Waypoints.current(c);
+			check("a marker was created", markers.size() == before + 1);
+			if (!markers.isEmpty()) {
+				Waypoints.Marker marker = markers.getLast();
+				LOGGER.info("[SelfTest] marker '{}' at {}, {}, {} in {}", marker.name, marker.x, marker.y, marker.z, marker.dimension);
+				check("the marker sits on the ground the camera looked at", marker.y == -60 && marker.dimension.equals("minecraft:overworld"));
+				Vec3d onScreen = WaypointHud.screenPos(c, marker, screen.width, screen.height);
+				check("its label is drawn where the crosshair is", onScreen != null
+					&& Math.abs(onScreen.x - screen.width / 2.0) < screen.width * 0.06 && Math.abs(onScreen.y - screen.height / 2.0) < screen.height * 0.08);
+			}
+		});
+		waitTicks("marker shown", 3);
+		run("check the marker is on the locator bar", c ->
+			check("the marker was added to the client's locator bar", c.getNetworkHandler().getWaypointHandler().hasWaypoint()));
+		screenshot("marker_from_free_camera");
+
 		run("fly straight down through the ground", c -> DeathView.getSyntheticInput().up = -1.0);
 		waitTicks("descend", 45);
 		run("check the camera passed through the ground", c -> {
@@ -1041,6 +1116,19 @@ public final class SelfTest {
 		waitTicks("back on death screen", 5);
 		run("check death screen is back", c -> check("death screen is back", c.currentScreen instanceof DeathScreen));
 		screenshot("back_on_death_screen");
+
+		Screen[] deathScreen = new Screen[1];
+		run("open the game menu from the death screen", c -> {
+			deathScreen[0] = c.currentScreen;
+			DeathScreenButtons.openGameMenu(c);
+		});
+		waitTicks("game menu", 5);
+		run("check the game menu", c -> check("the game menu opens on the death screen", c.currentScreen instanceof GameMenuScreen));
+		screenshot("game_menu_on_death_screen");
+		run("close the game menu", c -> c.currentScreen.close());
+		waitTicks("game menu closed", 5);
+		run("check the same death screen is back", c ->
+			check("closing the game menu returns to the same death screen", c.currentScreen == deathScreen[0] && c.currentScreen instanceof DeathScreen));
 	}
 
 	private void openWorld(MinecraftClient client) {

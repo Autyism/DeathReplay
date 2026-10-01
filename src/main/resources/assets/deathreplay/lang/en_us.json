@@ -62,5 +62,18 @@
 	"deathreplay.spectate.hint": "[%s] switch view   [Esc] back to death screen",
 	"deathreplay.spectate.hint.orbit": "Mouse: turn   Scroll: distance",
 	"deathreplay.spectate.hint.free": "Mouse: look   Move keys: fly   Jump / Sneak: up / down",
-	"deathreplay.spectate.hint.free2": "Sprint: faster   Scroll: speed"
+	"deathreplay.spectate.hint.free2": "Sprint: faster   Scroll: speed   Right click: mark this spot",
+	"key.deathreplay.waypoints": "Marker List",
+	"deathreplay.options.waypoints": "Markers...",
+	"deathreplay.waypoint.name": "Marker %s",
+	"deathreplay.waypoint.added": "Marked: %s at %s, %s, %s",
+	"deathreplay.waypoints.title": "Markers",
+	"deathreplay.waypoints.row": "%s   %s, %s, %s   %s",
+	"deathreplay.waypoints.delete": "Delete",
+	"deathreplay.waypoints.clear": "Delete All",
+	"deathreplay.waypoints.empty": "No markers. Right-click in the free camera to mark a spot.",
+	"deathreplay.waypoints.need_world": "Join a world to see its markers.",
+	"deathreplay.spectate.hint.mark": "Right click: mark this spot",
+	"deathreplay.replay.hint.mark": "Right click: mark the spot under the cursor",
+	"deathreplay.death.hint.menu": "[Esc] game menu"
 }

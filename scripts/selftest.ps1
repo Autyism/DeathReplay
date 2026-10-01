@@ -7,9 +7,8 @@
 # Usage (from anywhere):  powershell -ExecutionPolicy Bypass -File scripts\selftest.ps1
 param(
 	[int]$TimeoutSeconds = 360,
-	# Run with Sodium / Sodium + Iris in the dev client (what I actually play with).
-	[switch]$Sodium,
-	[switch]$Iris
+	# Run with Sodium in the dev client (I play with it; it replaces the chunk renderer).
+	[switch]$Sodium
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,7 +36,6 @@ $crashesBefore = @(Get-ChildItem $crashDir -Filter '*.txt' -ErrorAction Silently
 
 $gradleArgs = @('runClient', '--console=plain', '"-Ddr.selftest=true"')
 if ($Sodium) { $gradleArgs += '-Pwith_sodium=true' }
-if ($Iris) { $gradleArgs += '-Pwith_iris=true' }
 $gradle = Start-Process -FilePath (Join-Path $root 'gradlew.bat') `
 	-ArgumentList $gradleArgs `
 	-WorkingDirectory $root -WindowStyle Hidden -PassThru `

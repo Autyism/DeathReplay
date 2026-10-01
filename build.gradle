@@ -45,13 +45,12 @@ dependencies {
 	modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 	modLocalRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
 
-	// I play with Sodium (and Iris), which replace the chunk renderer. Add them to the
-	// dev client with -Pwith_sodium=true / -Pwith_iris=true; never a dependency of the mod itself.
-	if (project.hasProperty("with_sodium") || project.hasProperty("with_iris")) {
+	// I play with Sodium, which replaces the chunk renderer. Add it to the dev client
+	// with -Pwith_sodium=true; never a dependency of the mod itself. (Iris cannot be added the
+	// same way: its jars are built with Loom 1.14, which needs Gradle 9; this project is on
+	// Loom 1.13 / Gradle 8.14.)
+	if (project.hasProperty("with_sodium")) {
 		modLocalRuntime "maven.modrinth:sodium:${project.sodium_version}"
-	}
-	if (project.hasProperty("with_iris")) {
-		modLocalRuntime "maven.modrinth:iris:${project.iris_version}"
 	}
 }
 

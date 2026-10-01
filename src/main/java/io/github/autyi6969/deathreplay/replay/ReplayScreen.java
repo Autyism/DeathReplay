@@ -2,6 +2,8 @@ package io.github.autyi6969.deathreplay.replay;
 
 import io.github.autyi6969.deathreplay.record.Recording;
 import io.github.autyi6969.deathreplay.record.ReplayFileWriter;
+import io.github.autyi6969.deathreplay.waypoint.WaypointHud;
+import io.github.autyi6969.deathreplay.waypoint.Waypoints;
 import net.minecraft.client.gui.Click;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.DeathScreen;
@@ -33,6 +35,10 @@ public class ReplayScreen extends Screen {
 	private static final int BUTTON_HEIGHT = 20;
 	private static final int BUTTON_GAP = 4;
 	private static final int MAX_BUTTON_WIDTH = 78;
+	private static final int NOTICE_COLOR = 0xFFFFFF55;
+	private static final int NOTICE_TICKS = 60;
+	private static final long MARK_CLICK_NANOS = 300_000_000L;
+	private static final float MARK_CLICK_DEGREES = 2.0F;
 
 	/** Screen to go back to; {@code null} means "back to the game". */
 	@Nullable
@@ -43,6 +49,13 @@ public class ReplayScreen extends Screen {
 	/** True while the left mouse button is dragging the timeline. */
 	private boolean scrubbing;
 	private boolean wasPlayingBeforeScrub;
+	// A right click that is short and does not turn the camera drops a marker instead.
+	private long rightPressNanos;
+	private float rightPressYaw;
+	private float rightPressPitch;
+	@Nullable
+	private Text notice;
+	private int noticeTicksLeft;
 
 	public ReplayScreen(@Nullable Screen parent) {
 		super(Text.translatable("deathreplay.replay.title"));
@@ -100,6 +113,11 @@ public class ReplayScreen extends Screen {
 		if (!Replay.isPlayback()) {
 			// The replay ended by itself (respawn, disconnect...): let vanilla pick the next screen.
 			this.client.setScreen(null);
+			return;
+		}
+
+		if (this.noticeTicksLeft > 0) {
+			this.noticeTicksLeft--;
 		}
 	}
 
@@ -157,6 +175,9 @@ public class ReplayScreen extends Screen {
 		}
 
 		if (click.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
+			this.rightPressNanos = System.nanoTime();
+			this.rightPressYaw = Replay.getCamera().getYaw();
+			this.rightPressPitch = Replay.getCamera().getPitch();
 			Replay.setLooking(this.client, true);
 			return true;
 		}
@@ -187,6 +208,18 @@ public class ReplayScreen extends Screen {
 
 		if (click.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
 			Replay.setLooking(this.client, false);
+			boolean quick = System.nanoTime() - this.rightPressNanos < MARK_CLICK_NANOS;
+			boolean still = Math.abs(Replay.getCamera().getYaw() - this.rightPressYaw) + Math.abs(Replay.getCamera().getPitch() - this.rightPressPitch) < MARK_CLICK_DEGREES;
+			if (quick && still && Replay.getStage() != null) {
+				// What the cursor is on, not what the centre of the screen is on: the cursor is free here.
+				Waypoints.Marker marker = Waypoints.addFromCamera(this.client, Replay.getStage(), Replay.getCamera(),
+					click.x() / this.width * 2.0 - 1.0, 1.0 - click.y() / this.height * 2.0);
+				if (marker != null) {
+					this.notice = Text.translatable("deathreplay.waypoint.added", marker.name, marker.x, marker.y, marker.z);
+					this.noticeTicksLeft = NOTICE_TICKS;
+				}
+			}
+
 			return true;
 		}
 
@@ -261,6 +294,12 @@ public class ReplayScreen extends Screen {
 			case FREE -> Text.translatable("deathreplay.replay.hint.free", perspectiveKey);
 		};
 		context.drawCenteredTextWithShadow(this.textRenderer, viewHint, centerX, this.height - BUTTON_HEIGHT - 20, HINT_COLOR);
+		context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.replay.hint.mark"), centerX, this.height - BUTTON_HEIGHT - 32, HINT_COLOR);
+
+		WaypointHud.render(context, this.client, recording.dimension());
+		if (this.notice != null && this.noticeTicksLeft > 0) {
+			context.drawCenteredTextWithShadow(this.textRenderer, this.notice, centerX, BAR_TOP + BAR_HEIGHT + 20, NOTICE_COLOR);
+		}
 	}
 
 	@Override

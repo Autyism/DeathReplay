@@ -6,12 +6,15 @@ import io.github.autyi6969.deathreplay.record.Recording;
 import io.github.autyi6969.deathreplay.record.ReplayFileWriter;
 import io.github.autyi6969.deathreplay.replay.Replay;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
+import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.DeathScreen;
+import net.minecraft.client.gui.screen.GameMenuScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.text.Text;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * Adds the mod's buttons below the vanilla "Respawn" / "Title Screen" buttons of the death
@@ -32,9 +35,23 @@ public final class DeathScreenButtons {
 	}
 
 	private static void afterInit(MinecraftClient client, Screen screen, int scaledWidth, int scaledHeight) {
-		if (!(screen instanceof DeathScreen)) {
+		if (!(screen instanceof DeathScreen deathScreen)) {
 			return;
 		}
+
+		DeathScreenKeeper.remember(deathScreen, client.player);
+		// Vanilla ignores Esc on the death screen. Here it opens the game menu, so options, Mod Menu
+		// and the like can be reached without respawning; closing the menu comes back here.
+		ScreenKeyboardEvents.allowKeyPress(screen).register((pressedOn, input) -> {
+			if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+				openGameMenu(client);
+				return false;
+			}
+
+			return true;
+		});
+		ScreenEvents.afterRender(screen).register((rendered, context, mouseX, mouseY, tickDelta) ->
+			context.drawTextWithShadow(Screens.getTextRenderer(rendered), Text.translatable("deathreplay.death.hint.menu"), 4, rendered.height - 12, 0xFFC0C0C0));
 
 		// The death screen is created while the death packet is handled, before DeathView has had
 		// a tick to start, so decide by the setting rather than by DeathView.isActive().
@@ -72,6 +89,13 @@ public final class DeathScreenButtons {
 		};
 		refresh.run();
 		ScreenEvents.afterTick(screen).register(tickedScreen -> refresh.run());
+	}
+
+	/** Opens the game menu on top of the death screen. */
+	public static void openGameMenu(MinecraftClient client) {
+		if (client.currentScreen instanceof DeathScreen) {
+			client.setScreen(new GameMenuScreen(true));
+		}
 	}
 
 	private static void save(MinecraftClient client) {

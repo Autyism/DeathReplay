@@ -15,6 +15,7 @@
 		"GameRendererMixin",
 		"InGameHudMixin",
 		"LightmapTextureManagerMixin",
+		"MinecraftClientMixin",
 		"WorldMixin",
 		"WorldRendererMixin"
 	],
