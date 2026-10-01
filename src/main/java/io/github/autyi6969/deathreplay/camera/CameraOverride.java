@@ -1,7 +1,11 @@
 package io.github.autyi6969.deathreplay.camera;
 
+import io.github.autyi6969.deathreplay.death.DeathSpectateScreen;
 import io.github.autyi6969.deathreplay.death.DeathView;
 import io.github.autyi6969.deathreplay.replay.Replay;
+import io.github.autyi6969.deathreplay.replay.ReplayScreen;
+import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.Screen;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -15,6 +19,16 @@ public final class CameraOverride {
 	/** Cheap check, safe to call many times per frame. */
 	public static boolean isActive() {
 		return Replay.isActive() || DeathView.isActive();
+	}
+
+	/**
+	 * True while one of the mod's full-view screens is open. Hotbar, hearts and chat belong to
+	 * the present, not to the scene being looked at, so the in-game HUD is not drawn then.
+	 * (Not done through the F1 "hide HUD" option: that would also hide entity name tags.)
+	 */
+	public static boolean hidesHud() {
+		Screen screen = MinecraftClient.getInstance().currentScreen;
+		return screen instanceof ReplayScreen || screen instanceof DeathSpectateScreen;
 	}
 
 	/**

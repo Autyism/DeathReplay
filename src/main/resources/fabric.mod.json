@@ -9,6 +9,7 @@
 	],
 	"contact": {},
 	"license": "GPL-3.0",
+	"icon": "assets/deathreplay/icon.png",
 	"environment": "client",
 	"entrypoints": {
 		"client": [

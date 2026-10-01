@@ -22,6 +22,7 @@ import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Hand;
 import net.minecraft.util.math.MathHelper;
+import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -156,9 +157,16 @@ final class Puppet {
 		this.lastSample = sample;
 	}
 
-	@Nullable
-	EntitySample lastSample() {
-		return this.lastSample;
+	/**
+	 * Keeps the puppet where its last sample put it. Needed for entities the client moves by
+	 * itself (dropped items, arrows in flight); interpolated ones stay put on their own.
+	 */
+	void hold() {
+		EntitySample sample = this.lastSample;
+		if (sample != null && !this.interpolated && !this.entity.hasVehicle()) {
+			this.entity.setPosition(sample.x, sample.y, sample.z);
+			this.entity.setVelocity(Vec3d.ZERO);
+		}
 	}
 
 	private void applyAppearance(EntityAppearance appearance) {

@@ -37,12 +37,12 @@ public class ReplayScreen extends Screen {
 	@Override
 	public void removed() {
 		// Whatever replaces this screen, the world goes back to the present first.
-		Replay.stop(this.client);
+		Replay.endPlayback(this.client);
 	}
 
 	@Override
 	public void tick() {
-		if (!Replay.isActive()) {
+		if (!Replay.isPlayback()) {
 			// The replay ended by itself (respawn, disconnect...): let vanilla pick the next screen.
 			this.client.setScreen(null);
 			return;

@@ -8,6 +8,7 @@ import io.github.autyi6969.deathreplay.DeathReplayClient;
 import io.github.autyi6969.deathreplay.camera.CameraInput;
 import io.github.autyi6969.deathreplay.camera.DetachedCamera;
 import io.github.autyi6969.deathreplay.config.DeathReplayConfig;
+import io.github.autyi6969.deathreplay.death.DeathView;
 import io.github.autyi6969.deathreplay.record.EntitySample;
 import io.github.autyi6969.deathreplay.record.Frame;
 import io.github.autyi6969.deathreplay.record.RecordedEvent;
@@ -53,6 +54,11 @@ import org.jetbrains.annotations.Nullable;
  * updates that arrive while a replay runs are queued and applied the moment it ends. A replay
  * is only possible while the player is still dead on the death screen, and it stops the
  * instant the player respawns or the world changes.
+ *
+ * <p>Besides playback there is the <em>still</em>: the last recorded frame shown as a frozen
+ * scene on the death screen. One second after a death the server stops sending the dead
+ * player any entities, so without it the death screen camera would look at an empty world.
+ * The still is a photo of the past, not a live view; it ends with the respawn like playback.
  */
 public final class Replay {
 	/** Puppet entity ids count down from here; server-assigned ids are positive. */
@@ -89,6 +95,8 @@ public final class Replay {
 	/** Index of the frame the puppets were last given. */
 	private static int tick;
 	private static boolean playing;
+	/** True while only the frozen last frame is shown and the death screen camera is in charge. */
+	private static boolean still;
 	/** Index of the last frame whose block changes are currently applied to the world. */
 	private static int blocksAppliedThrough;
 	private static int nextPuppetId;
@@ -111,8 +119,19 @@ public final class Replay {
 
 	// ---------------------------------------------------------------- queries
 
+	/** True during playback and while the still is shown. */
 	public static boolean isActive() {
 		return recording != null;
+	}
+
+	/** True while a replay is being played back (or is paused) on the replay screen. */
+	public static boolean isPlayback() {
+		return recording != null && !still;
+	}
+
+	/** True while the frozen last frame is shown on the death screen. */
+	public static boolean isStill() {
+		return recording != null && still;
 	}
 
 	/** Whether a replay could be started right now. */
@@ -179,26 +198,49 @@ public final class Replay {
 			return false;
 		}
 
-		return !isPuppet(entity) || view == ReplayView.FIRST_PERSON && entity == getPlayerPuppet();
+		return !isPuppet(entity) || !still && view == ReplayView.FIRST_PERSON && entity == getPlayerPuppet();
 	}
 
 	// ---------------------------------------------------------------- start / stop
 
 	/** Opens the replay screen from the death screen. Returns false if there is nothing to replay. */
 	public static boolean open(MinecraftClient client) {
-		if (isActive() || !isAvailable(client) || !(client.currentScreen instanceof DeathScreen deathScreen)) {
+		if (isPlayback() || !isAvailable(client) || !(client.currentScreen instanceof DeathScreen deathScreen)) {
 			return false;
 		}
 
-		if (!start(client)) {
+		if (!begin(client)) {
 			return false;
 		}
 
+		startPlayback();
 		client.setScreen(new ReplayScreen(deathScreen));
 		return true;
 	}
 
-	private static boolean start(MinecraftClient client) {
+	/**
+	 * Shows the frozen last frame on the death screen. Called automatically once the recording
+	 * of the current death is ready and the death screen camera is in use.
+	 */
+	public static boolean showStill(MinecraftClient client) {
+		if (isActive() || !begin(client)) {
+			return false;
+		}
+
+		still = true;
+		playing = false;
+		tick = recording.tickCount() - 1;
+		syncPuppets(recording.frames().get(tick));
+		DeathReplayClient.LOGGER.info("Showing the last recorded frame on the death screen: {} puppets", PUPPETS.size());
+		return true;
+	}
+
+	/** Binds the replay to the current death. The world is left as it is (the end of the recording). */
+	private static boolean begin(MinecraftClient client) {
+		if (isActive()) {
+			return true;
+		}
+
 		Recording frozen = Recorder.getFrozen();
 		if (frozen == null || frozen.frames().isEmpty() || !isAvailable(client)) {
 			return false;
@@ -207,17 +249,26 @@ public final class Replay {
 		recording = frozen;
 		world = client.world;
 		deadPlayer = client.player;
+		still = false;
+		playing = false;
+		stopRequested = false;
+		nextPuppetId = 0;
+		tick = frozen.tickCount() - 1;
+		blocksAppliedThrough = frozen.tickCount() - 1;
+		DEFERRED_BLOCK_UPDATES.clear();
+		BLOCK_BREAKS.clear();
+		return true;
+	}
+
+	private static void startPlayback() {
+		Recording frozen = recording;
+		still = false;
 		view = DeathReplayConfig.get().replayView;
 		distance = DEFAULT_DISTANCE;
 		flySpeed = DEFAULT_FLY_SPEED;
-		stopRequested = false;
 		lastFrameNanos = 0L;
-		nextPuppetId = 0;
-		DEFERRED_BLOCK_UPDATES.clear();
-		BLOCK_BREAKS.clear();
 
 		// The world currently shows the moment of death; take it back to the start of the recording.
-		blocksAppliedThrough = frozen.tickCount() - 1;
 		jumpTo(0);
 		playing = true;
 
@@ -226,7 +277,21 @@ public final class Replay {
 		CAMERA.setRotation(player != null ? player.yaw : 0.0F, 20.0F);
 		CAMERA.orbit(world, deadPlayer, lastTarget, distance);
 		DeathReplayClient.LOGGER.info("Replay started: {} ticks, {} puppets", frozen.tickCount(), PUPPETS.size());
-		return true;
+	}
+
+	/**
+	 * Called when the replay screen goes away: playback ends, the world returns to the present,
+	 * and the still is shown again if the player is still on the death screen.
+	 */
+	static void endPlayback(MinecraftClient client) {
+		stop(client);
+		if (shouldShowStill(client)) {
+			showStill(client);
+		}
+	}
+
+	private static boolean shouldShowStill(MinecraftClient client) {
+		return DeathView.isActive() && isAvailable(client);
 	}
 
 	/** Ends the replay and puts the world back exactly as the server last described it. */
@@ -250,6 +315,7 @@ public final class Replay {
 		world = null;
 		deadPlayer = null;
 		playing = false;
+		still = false;
 		controlling = false;
 		stopRequested = false;
 		PUPPETS.clear();
@@ -278,12 +344,30 @@ public final class Replay {
 	/** Called at the end of every client tick. */
 	public static void tick(MinecraftClient client) {
 		if (!isActive()) {
+			if (shouldShowStill(client)) {
+				showStill(client);
+			}
+
 			return;
 		}
 
 		if (stopRequested || !isStillValid(client)) {
 			// Respawned, kicked, changed dimension: the replay is over, no questions asked.
 			stop(client);
+			return;
+		}
+
+		if (still) {
+			if (!DeathView.isActive()) {
+				// The death screen camera was switched off in the settings.
+				stop(client);
+				return;
+			}
+
+			for (Puppet puppet : PUPPETS.values()) {
+				puppet.hold();
+			}
+
 			return;
 		}
 
@@ -352,7 +436,8 @@ public final class Replay {
 	 * applied when the replay ends.
 	 */
 	public static boolean deferBlockUpdate(ClientWorld updatedWorld, BlockPos pos, BlockState state, int flags) {
-		if (!isActive() || updatedWorld != world) {
+		// The still does not rewind the world, so there is nothing to protect from updates.
+		if (!isPlayback() || updatedWorld != world) {
 			return false;
 		}
 
@@ -552,6 +637,10 @@ public final class Replay {
 			return null;
 		}
 
+		if (still) {
+			return null;
+		}
+
 		long now = System.nanoTime();
 		double seconds = lastFrameNanos == 0L ? 0.0 : MathHelper.clamp((now - lastFrameNanos) / 1.0e9, 0.0, 0.1);
 		lastFrameNanos = now;
@@ -599,7 +688,7 @@ public final class Replay {
 	// ---------------------------------------------------------------- controls
 
 	public static void setPlaying(boolean value) {
-		if (!isActive()) {
+		if (!isPlayback()) {
 			return;
 		}
 
@@ -621,7 +710,7 @@ public final class Replay {
 
 	/** Jumps to a tick, keeping the play / pause state. */
 	public static void seek(int target) {
-		if (isActive()) {
+		if (isPlayback()) {
 			jumpTo(target);
 		}
 	}
@@ -648,7 +737,7 @@ public final class Replay {
 	}
 
 	static void setControlling(MinecraftClient client, boolean value) {
-		controlling = value && isActive();
+		controlling = value && isPlayback();
 		if (controlling) {
 			INPUT.grabMouse(client);
 		} else {

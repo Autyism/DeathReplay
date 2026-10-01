@@ -172,6 +172,14 @@ public final class SelfTest {
 			double distance = camera.getCameraPos().distanceTo(c.player.getEyePos());
 			LOGGER.info("[SelfTest] after respawn: camera is {} blocks from the player's eyes", String.format("%.2f", distance));
 			check("death view ended on respawn", !DeathView.isActive());
+			int puppets = 0;
+			for (Entity entity : c.world.getEntities()) {
+				if (entity.getId() < 0) {
+					puppets++;
+				}
+			}
+
+			check("the still ended on respawn and left nothing behind", !Replay.isActive() && puppets == 0 && Replay.puppetCount() == 0);
 			check("camera is back at the player's eyes", distance < 0.5);
 			check("camera is first person again", !camera.isThirdPerson());
 			check("perspective setting untouched", c.options.getPerspective() == Perspective.FIRST_PERSON);
@@ -179,6 +187,7 @@ public final class SelfTest {
 		screenshot("after_respawn");
 
 		respawnDuringReplayScript();
+		combatScript();
 		settingsScript();
 		// Screenshots are written on a background thread; give them time to land on disk.
 		waitTicks("flush screenshots", 40);
@@ -262,6 +271,79 @@ public final class SelfTest {
 				fail("could not read back " + file + ": " + e);
 			}
 		});
+	}
+
+	/**
+	 * A death that looks like a real one: in survival, beaten to death by a zombie. Checks that
+	 * a fight (mob attacks, damage, hurt animations) ends up in the recording and the replay.
+	 */
+	private void combatScript() {
+		boolean[] killedByZombie = new boolean[1];
+
+		run("combat scene: survival, one zombie, almost no health", c -> {
+			command(c, "tp @s 0.5 -60 0.5 0 10");
+			command(c, "kill @e[type=minecraft:zombie]");
+			command(c, "gamemode survival");
+			command(c, "summon minecraft:zombie 0.5 -60 3.5 {PersistenceRequired:1b}");
+			command(c, "damage @s 17");
+		});
+		waitUntilSoft("the zombie kills the player", c -> c.currentScreen instanceof DeathScreen, 20 * 25);
+		run("make sure the player is dead", c -> {
+			killedByZombie[0] = c.currentScreen instanceof DeathScreen;
+			if (!killedByZombie[0]) {
+				LOGGER.info("[SelfTest] NOTE the zombie did not kill the player in 25 s; using /kill instead (not a failure)");
+				command(c, "kill @s");
+			}
+		});
+		waitUntil("combat death screen", c -> c.currentScreen instanceof DeathScreen, 20 * 10);
+		waitUntil("combat recording frozen", () -> Recorder.getFrozen() != null, 60);
+		run("check the fight was recorded", c -> {
+			Recording recording = Recorder.getFrozen();
+			int hitsOnPlayer = 0;
+			boolean zombie = false;
+			for (Frame frame : recording.frames()) {
+				for (EntitySample sample : frame.entities()) {
+					zombie |= sample.appearance.type() == EntityType.ZOMBIE;
+				}
+
+				for (RecordedEvent event : frame.events()) {
+					if (event instanceof RecordedEvent.EntityDamage damage && damage.packet().entityId() == recording.playerEntityId()) {
+						hitsOnPlayer++;
+					}
+				}
+			}
+
+			LOGGER.info("[SelfTest] combat recording: {} ticks, death message '{}', {} damage packets on the player, zombie recorded: {}",
+				recording.tickCount(), recording.deathMessage() == null ? "" : recording.deathMessage().getString(), hitsOnPlayer, zombie);
+			check("the zombie is in the recording", zombie);
+			check("the death message was captured", recording.deathMessage() != null);
+			if (killedByZombie[0]) {
+				check("the hits on the player were recorded", hitsOnPlayer >= 2);
+			}
+
+			c.inGameHud.getChatHud().clear(false);
+			check("combat replay opened", Replay.open(c));
+			Replay.seek(Math.max(0, recording.deathFrame() - 14));
+		});
+		waitTicks("combat replay plays", 8);
+		run("pause shortly before the death", c -> Replay.setPlaying(false));
+		waitTicks("paused", 3);
+		screenshot("combat_replay_before_death");
+		run("play to the end", c -> Replay.setPlaying(true));
+		waitUntil("combat replay reaches the end", () -> Replay.isAtEnd() && !Replay.isPlaying(), 100);
+		waitTicks("end", 3);
+		screenshot("combat_replay_death");
+		run("close the combat replay", c -> c.currentScreen.close());
+		waitTicks("closed", 3);
+		screenshot("combat_death_screen_still");
+		run("respawn after the fight", c -> c.player.requestRespawn());
+		waitUntil("respawned after the fight", c -> c.player != null && !c.player.isDead() && !(c.currentScreen instanceof DeathScreen), 20 * 20);
+		run("clean up the combat scene", c -> {
+			command(c, "gamemode creative");
+			command(c, "kill @e[type=minecraft:zombie]");
+			command(c, "kill @e[type=minecraft:item]");
+		});
+		waitTicks("cleaned up", 10);
 	}
 
 	/** Feature (d): settings screen and Mod Menu entry. Runs while alive, with no screen open. */
@@ -381,12 +463,14 @@ public final class SelfTest {
 			// Chat lines would cover the lower half of every screenshot.
 			c.inGameHud.getChatHud().clear(false);
 			check("replay is available on the death screen", Replay.isAvailable(c));
+			LOGGER.info("[SelfTest] still: {} puppets", Replay.puppetCount());
+			check("the frozen last frame is shown on the death screen", Replay.isStill() && Replay.puppetCount() >= 3);
 			check("replay opened", Replay.open(c));
 		});
 		waitTicks("replay starts", 2);
 		run("check replay start", c -> {
 			check("replay screen is open", c.currentScreen instanceof ReplayScreen);
-			check("replay is active", Replay.isActive());
+			check("replay is playing back", Replay.isPlayback() && !Replay.isStill());
 			check("replay starts in third person", Replay.getView() == ReplayView.THIRD_PERSON);
 			LOGGER.info("[SelfTest] replay: {} puppets at tick {}", Replay.puppetCount(), Replay.getTick());
 			check("puppets were created", Replay.puppetCount() >= 3);
@@ -485,17 +569,19 @@ public final class SelfTest {
 		run("close the replay", c -> c.currentScreen.close());
 		waitTicks("replay closed", 3);
 		run("check everything is put back", c -> {
-			check("replay is over", !Replay.isActive());
+			check("playback is over", !Replay.isPlayback());
 			check("death screen is back", c.currentScreen instanceof DeathScreen);
 			check("world is back in the present: test block is gone", c.world.getBlockState(testBlock).isAir());
-			int leftovers = 0;
+			int puppets = 0;
 			for (Entity entity : c.world.getEntities()) {
 				if (entity.getId() < 0) {
-					leftovers++;
+					puppets++;
 				}
 			}
 
-			check("no puppet is left in the world", leftovers == 0 && Replay.puppetCount() == 0);
+			check("the frozen last frame is shown again, and nothing else", Replay.isStill() && puppets == Replay.puppetCount() && puppets >= 3);
+			Entity corpse = Replay.getPlayerPuppet();
+			check("the still contains the player's body", corpse instanceof LivingEntity living && living.isDead());
 		});
 		screenshot("death_screen_after_replay");
 	}
@@ -670,6 +756,12 @@ public final class SelfTest {
 
 	void waitUntil(String name, Predicate<MinecraftClient> condition, int timeoutTicks) {
 		this.steps.add(new Step("wait for " + name, condition, timeoutTicks));
+	}
+
+	/** Like {@link #waitUntil}, but running out of time is not a failure: the script just goes on. */
+	void waitUntilSoft(String name, Predicate<MinecraftClient> condition, int maxTicks) {
+		int[] waited = {0};
+		this.steps.add(new Step("wait up to " + maxTicks + " ticks for " + name, c -> condition.test(c) || ++waited[0] >= maxTicks, maxTicks + 5));
 	}
 
 	void waitUntil(String name, BooleanSupplier condition, int timeoutTicks) {

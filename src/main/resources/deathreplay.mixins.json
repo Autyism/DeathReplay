@@ -10,6 +10,7 @@
 		"EntityRenderManagerMixin",
 		"GameOptionsMixin",
 		"GameRendererMixin",
+		"InGameHudMixin",
 		"WorldMixin"
 	],
 	"injectors": {
