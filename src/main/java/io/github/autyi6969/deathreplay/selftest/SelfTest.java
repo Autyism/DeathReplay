@@ -5,6 +5,9 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 import java.util.Deque;
 import java.util.Set;
 import java.util.TreeSet;
@@ -165,8 +168,10 @@ public final class SelfTest {
 		waitTicks("death screen t40", 30);
 
 		recorderScript();
+		startPacketAudit("the death screen, the replay and looking around");
 		replayScript();
 		deathCameraScript();
+		endPacketAudit("the death screen, the replay and looking around", false);
 
 		run("respawn", c -> c.player.requestRespawn());
 		waitUntil("respawned", c -> c.player != null && !c.player.isDead() && !(c.currentScreen instanceof DeathScreen), 20 * 20);
@@ -193,6 +198,7 @@ public final class SelfTest {
 		respawnDuringReplayScript();
 		combatScript();
 		settingsScript();
+		performanceScript();
 		// Screenshots are written on a background thread; give them time to land on disk.
 		waitTicks("flush screenshots", 40);
 	}
@@ -352,6 +358,45 @@ public final class SelfTest {
 		waitTicks("cleaned up", 10);
 	}
 
+	/** How much the always-on recorder costs per tick, with a normal and with a crowded scene. */
+	private void performanceScript() {
+		run("measure the recorder: normal scene", c -> Recorder.resetCaptureStats());
+		waitTicks("recording a normal scene", 100);
+		run("crowd the scene with 150 pigs", c -> {
+			LOGGER.info("[SelfTest] recorder cost with {} entities nearby: average {} us per tick, worst tick {} us", countEntities(c),
+				String.format("%.1f", Recorder.averageCaptureMicros()), String.format("%.1f", Recorder.maxCaptureMicros()));
+			for (int i = 0; i < 150; i++) {
+				c.player.networkHandler.sendChatCommand("summon minecraft:pig " + (6 + i % 15) + " -60 " + (12 + i / 15));
+			}
+		});
+		waitTicks("pigs spawn", 40);
+		run("measure the recorder: crowded scene", c -> {
+			c.inGameHud.getChatHud().clear(false);
+			Recorder.resetCaptureStats();
+		});
+		waitTicks("recording a crowded scene", 100);
+		run("check the recorder stays cheap", c -> {
+			double average = Recorder.averageCaptureMicros();
+			LOGGER.info("[SelfTest] recorder cost with {} entities nearby: average {} us per tick, worst tick {} us (a tick is 50000 us; fps now {})",
+				countEntities(c), String.format("%.1f", average), String.format("%.1f", Recorder.maxCaptureMicros()), c.getCurrentFps());
+			check("recording a crowded scene costs less than 1 ms per tick (2% of a tick)", average < 1000.0);
+			c.player.networkHandler.sendChatCommand("kill @e[type=minecraft:pig]");
+			c.player.networkHandler.sendChatCommand("kill @e[type=minecraft:item]");
+		});
+		waitTicks("pigs gone", 20);
+	}
+
+	private static int countEntities(MinecraftClient client) {
+		int count = 0;
+		for (Entity entity : client.world.getEntities()) {
+			if (entity.squaredDistanceTo(client.player) <= Recorder.CAPTURE_RADIUS * Recorder.CAPTURE_RADIUS) {
+				count++;
+			}
+		}
+
+		return count;
+	}
+
 	/** Feature (d): settings screen and Mod Menu entry. Runs while alive, with no screen open. */
 	private void settingsScript() {
 		run("restore the real settings", c -> {
@@ -462,6 +507,7 @@ public final class SelfTest {
 
 		// ---- watching the replay after respawning, alive, standing somewhere else
 		Vec3d[] playerPos = new Vec3d[1];
+		startPacketAudit("the replay after respawning");
 		run("open the replay after respawning", c -> {
 			c.inGameHud.getChatHud().clear(false);
 			playerPos[0] = c.player.getEntityPos();
@@ -496,6 +542,7 @@ public final class SelfTest {
 			check("the real world shows the present: block is placed", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
 			check("the recording can be watched again", Replay.isAvailable(c));
 		});
+		endPacketAudit("the replay after respawning", true);
 		waitTicks("real world on screen again", 20);
 		screenshot("back_in_game_after_replay");
 		run("remove the test block", c -> command(c, "setblock 3 -60 8 minecraft:air"));
@@ -872,6 +919,36 @@ public final class SelfTest {
 		} else {
 			fail("check failed: " + what);
 		}
+	}
+
+	// ---------------------------------------------------------------- packet audit
+
+	/** Packets a vanilla client sends on its own, dead or alive, without the player doing anything. */
+	private static final Set<String> IDLE_PACKETS = Set.of("ClientTickEndC2SPacket", "KeepAliveC2SPacket", "CommonPongC2SPacket");
+
+	/** Starts counting what the client sends to the server. */
+	private void startPacketAudit(String what) {
+		run("start counting outgoing packets: " + what, c -> PacketAudit.start());
+	}
+
+	/**
+	 * Stops counting and fails if anything was sent that an idle vanilla client would not send.
+	 * {@code alive}: a living player's client also reports its position.
+	 */
+	private void endPacketAudit(String what, boolean alive) {
+		run("check outgoing packets: " + what, c -> {
+			Map<String, Integer> sent = PacketAudit.stop();
+			LOGGER.info("[SelfTest] packets sent to the server during {}: {}", what, sent);
+			List<String> unexpected = new ArrayList<>();
+			for (String type : sent.keySet()) {
+				boolean vanillaIdle = IDLE_PACKETS.contains(type) || alive && (type.startsWith("PlayerMoveC2SPacket") || type.equals("PlayerInputC2SPacket"));
+				if (!vanillaIdle) {
+					unexpected.add(type);
+				}
+			}
+
+			check("nothing but vanilla's idle packets was sent during " + what + (unexpected.isEmpty() ? "" : ", but found " + unexpected), unexpected.isEmpty());
+		});
 	}
 
 	// ---------------------------------------------------------------- step helpers
