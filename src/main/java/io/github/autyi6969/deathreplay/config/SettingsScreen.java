@@ -38,7 +38,7 @@ public class SettingsScreen extends Screen {
 	@Override
 	protected void init() {
 		int x = this.width / 2 - WIDGET_WIDTH / 2;
-		int y = Math.max(32, this.height / 2 - 3 * ROW_HEIGHT);
+		int y = Math.max(30, this.height / 2 - 4 * ROW_HEIGHT + 6);
 
 		this.addDrawableChild(new BufferSlider(x, y, this.config));
 		y += ROW_HEIGHT;
@@ -52,6 +52,11 @@ public class SettingsScreen extends Screen {
 			.values(List.of(ReplayView.values()))
 			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.replay_view.tooltip")))
 			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.replay_view"), (button, value) -> this.config.replayView = value));
+		y += ROW_HEIGHT;
+
+		this.addDrawableChild(CyclingButtonWidget.onOffBuilder(this.config.respawnHint)
+			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.respawn_hint.tooltip")))
+			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.respawn_hint"), (button, value) -> this.config.respawnHint = value));
 		y += ROW_HEIGHT;
 
 		this.addDrawableChild(CyclingButtonWidget.onOffBuilder(this.config.deathFreeCamera)

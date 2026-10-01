@@ -6,6 +6,7 @@ import io.github.autyi6969.deathreplay.replay.Replay;
 import io.github.autyi6969.deathreplay.replay.ReplayScreen;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.Screen;
+import net.minecraft.client.world.ClientWorld;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -19,6 +20,12 @@ public final class CameraOverride {
 	/** Cheap check, safe to call many times per frame. */
 	public static boolean isActive() {
 		return Replay.isActive() || DeathView.isActive();
+	}
+
+	/** The replay's stage while playback runs, otherwise {@code null}. See {@link Replay#getStage()}. */
+	@Nullable
+	public static ClientWorld getStage() {
+		return Replay.getStage();
 	}
 
 	/**

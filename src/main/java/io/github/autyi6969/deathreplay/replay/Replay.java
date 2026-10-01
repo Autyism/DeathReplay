@@ -21,9 +21,8 @@ import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
 import net.minecraft.block.Block;
-import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.DeathScreen;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.network.ClientPlayerEntity;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
@@ -42,23 +41,26 @@ import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Plays a frozen {@link Recording} back inside the client's own copy of the world.
+ * Shows a frozen {@link Recording}: as playback, or as a still.
  *
- * <p>The replay is a local re-enactment of data the client already received before the death:
+ * <p><b>Playback</b> re-enacts the recording on a stage of its own: a client-side copy of the
+ * terrain around the death ({@link ReplayWorld}) that is handed to the renderers for as long
+ * as the replay screen is open. On that stage
  * <ul>
  * <li>blocks that changed during the recording are set back, then changed again in step;</li>
  * <li>recorded entities are acted out by client-only {@link Puppet}s;</li>
  * <li>recorded particle / sound / effect packets are shown again at their tick.</li>
  * </ul>
- * Nothing is sent to the server and nothing from the server is delayed or dropped: block
- * updates that arrive while a replay runs are queued and applied the moment it ends. A replay
- * is only possible while the player is still dead on the death screen, and it stops the
- * instant the player respawns or the world changes.
+ * The game's real world is not touched: it keeps ticking, the real player stays where it is,
+ * and everything the server sends is applied as usual. Leaving the replay simply hands the
+ * renderers back to the real world. Because the stage is a copy, playback works on the death
+ * screen as well as after respawning. It is a recording of the past in both cases; nothing
+ * is sent to the server and nothing live is shown of the place of death.
  *
- * <p>Besides playback there is the <em>still</em>: the last recorded frame shown as a frozen
- * scene on the death screen. One second after a death the server stops sending the dead
- * player any entities, so without it the death screen camera would look at an empty world.
- * The still is a photo of the past, not a live view; it ends with the respawn like playback.
+ * <p>The <b>still</b> is the last recorded frame shown as frozen puppets in the real world on
+ * the death screen. One second after a death the server stops sending the dead player any
+ * entities, so without it the death screen camera would look at an empty world. It exists
+ * only while the player is dead and ends with the respawn.
  */
 public final class Replay {
 	/** Puppet entity ids count down from here; server-assigned ids are positive. */
@@ -73,6 +75,7 @@ public final class Replay {
 	private static final double DEFAULT_FLY_SPEED = 10.0;
 	private static final double SPRINT_MULTIPLIER = 2.5;
 	private static final int SEEK_TICKS = 2 * Recording.TICKS_PER_SECOND;
+	private static final int NO_SEEK = -1;
 
 	private static final DetachedCamera CAMERA = new DetachedCamera();
 	private static final CameraInput INPUT = new CameraInput();
@@ -81,23 +84,31 @@ public final class Replay {
 	private static final CameraInput.State SYNTHETIC_INPUT = new CameraInput.State();
 	private static final Int2ObjectMap<Puppet> PUPPETS = new Int2ObjectOpenHashMap<>();
 	private static final Set<Entity> PUPPET_ENTITIES = new ReferenceOpenHashSet<>();
-	private static final List<DeferredBlockUpdate> DEFERRED_BLOCK_UPDATES = new ArrayList<>();
 	private static final List<BlockBreak> BLOCK_BREAKS = new ArrayList<>();
 
 	@Nullable
 	private static Recording recording;
+	/** The world the puppets are in: the stage during playback, the real world for the still. */
 	@Nullable
 	private static ClientWorld world;
+	/** The stage; non-null exactly while playback is running. */
 	@Nullable
-	private static ClientPlayerEntity deadPlayer;
+	private static ClientWorld stage;
+	/** The game's real world and player when this replay started; if either changes, it ends. */
+	@Nullable
+	private static ClientWorld boundWorld;
+	@Nullable
+	private static ClientPlayerEntity boundPlayer;
 	/** Index of the frame the puppets were last given. */
 	private static int tick;
 	private static boolean playing;
 	/** True while only the frozen last frame is shown and the death screen camera is in charge. */
 	private static boolean still;
-	/** Index of the last frame whose block changes are currently applied to the world. */
+	/** Index of the last frame whose block changes are currently applied to the stage. */
 	private static int blocksAppliedThrough;
 	private static int nextPuppetId;
+	/** A jump asked for by dragging the timeline; carried out once per tick. */
+	private static int pendingSeek = NO_SEEK;
 	private static ReplayView view = ReplayView.THIRD_PERSON;
 	private static double distance = DEFAULT_DISTANCE;
 	private static double flySpeed = DEFAULT_FLY_SPEED;
@@ -105,9 +116,6 @@ public final class Replay {
 	private static boolean controlling;
 	private static boolean stopRequested;
 	private static long lastFrameNanos;
-
-	private record DeferredBlockUpdate(BlockPos pos, BlockState state, int flags) {
-	}
 
 	private record BlockBreak(int entityId, BlockPos pos) {
 	}
@@ -132,14 +140,26 @@ public final class Replay {
 		return recording != null && still;
 	}
 
-	/** Whether a replay could be started right now. */
+	/**
+	 * Whether the latest recording can be played right now. True on the death screen and
+	 * after respawning alike, for as long as the player stays on the server.
+	 */
 	public static boolean isAvailable(MinecraftClient client) {
-		Recording frozen = Recorder.getFrozen();
-		return frozen != null
-			&& client.player != null
-			&& client.world != null
-			&& client.player.isDead()
-			&& client.world.getRegistryKey() == frozen.dimension();
+		return Recorder.getLast() != null && canPlay(client);
+	}
+
+	/** Whether any recording could be played: the stage needs a live connection to build on. */
+	public static boolean canPlay(MinecraftClient client) {
+		return client.world != null && client.player != null && client.getNetworkHandler() != null;
+	}
+
+	/**
+	 * The world the renderers should treat as "the world" for lighting, fog and camera while
+	 * playback runs, or {@code null} when the game's own world is on screen.
+	 */
+	@Nullable
+	public static ClientWorld getStage() {
+		return stage;
 	}
 
 	public static boolean isPuppet(Entity entity) {
@@ -156,7 +176,7 @@ public final class Replay {
 	}
 
 	public static int getTick() {
-		return tick;
+		return pendingSeek != NO_SEEK ? pendingSeek : tick;
 	}
 
 	public static boolean isPlaying() {
@@ -190,29 +210,73 @@ public final class Replay {
 		return puppet == null ? null : puppet.entity;
 	}
 
-	/** Entities the replay hides: everything real, and the player's own puppet in first person. */
+	/**
+	 * Entities that must not be drawn: during the still everything real (it would stand in the
+	 * frozen scene), in first-person playback the player's own puppet (the camera is inside it).
+	 */
 	public static boolean hidesEntity(Entity entity) {
 		if (!isActive()) {
 			return false;
 		}
 
-		return !isPuppet(entity) || !still && view == ReplayView.FIRST_PERSON && entity == getPlayerPuppet();
+		if (still) {
+			return !isPuppet(entity);
+		}
+
+		return view == ReplayView.FIRST_PERSON && entity == getPlayerPuppet();
 	}
 
 	// ---------------------------------------------------------------- start / stop
 
-	/** Opens the replay screen from the death screen. Returns false if there is nothing to replay. */
+	/** Plays the latest recording. {@code client.currentScreen} is returned to afterwards. */
 	public static boolean open(MinecraftClient client) {
-		if (isPlayback() || !isAvailable(client) || !(client.currentScreen instanceof DeathScreen deathScreen)) {
+		Recording latest = Recorder.getLast();
+		return latest != null && open(client, latest);
+	}
+
+	/** Plays {@code toPlay} on the replay screen. Returns false if that is not possible now. */
+	public static boolean open(MinecraftClient client, Recording toPlay) {
+		if (isPlayback() || !canPlay(client) || toPlay.frames().isEmpty()) {
 			return false;
 		}
 
-		if (!begin(client)) {
+		Screen parent = client.currentScreen;
+		if (isStill()) {
+			stop(client);
+		}
+
+		ClientWorld newStage;
+		try {
+			long start = System.nanoTime();
+			newStage = ReplayWorld.create(client, toPlay);
+			DeathReplayClient.LOGGER.info("Built the replay stage: {} chunks in {} ms", toPlay.snapshot().chunks().size(),
+				String.format("%.1f", (System.nanoTime() - start) / 1.0e6));
+		} catch (RuntimeException e) {
+			DeathReplayClient.LOGGER.error("Could not build the replay stage", e);
 			return false;
 		}
 
-		startPlayback();
-		client.setScreen(new ReplayScreen(deathScreen));
+		bind(client, toPlay, newStage);
+		stage = newStage;
+		attachRenderers(client, newStage);
+		still = false;
+		view = DeathReplayConfig.get().replayView;
+		distance = DEFAULT_DISTANCE;
+		flySpeed = DEFAULT_FLY_SPEED;
+		lastFrameNanos = 0L;
+
+		// The stage shows the end of the recording; take it back to the start.
+		blocksAppliedThrough = toPlay.tickCount() - 1;
+		jumpTo(0);
+		playing = true;
+
+		EntitySample player = toPlay.playerAt(0);
+		lastTarget = player != null ? player.pos().add(0.0, player.eyeHeight, 0.0) : toPlay.deathPos();
+		CAMERA.setRotation(player != null ? player.yaw : 0.0F, 20.0F);
+		CAMERA.orbit(newStage, client.player, lastTarget, distance);
+		DeathReplayClient.LOGGER.info("Replay started: {} ticks, {} puppets", toPlay.tickCount(), PUPPETS.size());
+
+		client.setScreen(new ReplayScreen(parent));
 		return true;
 	}
 
@@ -222,64 +286,34 @@ public final class Replay {
 	 * taken the live entities away.
 	 */
 	public static boolean showStill(MinecraftClient client) {
-		if (isActive() || !begin(client)) {
+		Recording frozen = Recorder.getFrozen();
+		if (isActive() || frozen == null || frozen.frames().isEmpty() || !canPlay(client)) {
 			return false;
 		}
 
+		bind(client, frozen, client.world);
 		still = true;
-		playing = false;
-		tick = recording.tickCount() - 1;
-		syncPuppets(recording.frames().get(tick));
+		tick = frozen.tickCount() - 1;
+		syncPuppets(frozen.frames().get(tick));
 		DeathReplayClient.LOGGER.info("Showing the last recorded frame on the death screen: {} puppets", PUPPETS.size());
 		return true;
 	}
 
-	/** Binds the replay to the current death. The world is left as it is (the end of the recording). */
-	private static boolean begin(MinecraftClient client) {
-		if (isActive()) {
-			return true;
-		}
-
-		Recording frozen = Recorder.getFrozen();
-		if (frozen == null || frozen.frames().isEmpty() || !isAvailable(client)) {
-			return false;
-		}
-
-		recording = frozen;
-		world = client.world;
-		deadPlayer = client.player;
-		still = false;
+	private static void bind(MinecraftClient client, Recording toShow, ClientWorld puppetWorld) {
+		recording = toShow;
+		world = puppetWorld;
+		boundWorld = client.world;
+		boundPlayer = client.player;
 		playing = false;
 		stopRequested = false;
+		pendingSeek = NO_SEEK;
 		nextPuppetId = 0;
-		tick = frozen.tickCount() - 1;
-		blocksAppliedThrough = frozen.tickCount() - 1;
-		DEFERRED_BLOCK_UPDATES.clear();
+		tick = toShow.tickCount() - 1;
 		BLOCK_BREAKS.clear();
-		return true;
-	}
-
-	private static void startPlayback() {
-		Recording frozen = recording;
-		still = false;
-		view = DeathReplayConfig.get().replayView;
-		distance = DEFAULT_DISTANCE;
-		flySpeed = DEFAULT_FLY_SPEED;
-		lastFrameNanos = 0L;
-
-		// The world currently shows the moment of death; take it back to the start of the recording.
-		jumpTo(0);
-		playing = true;
-
-		EntitySample player = frozen.playerAt(0);
-		lastTarget = player != null ? player.pos().add(0.0, player.eyeHeight, 0.0) : frozen.deathPos();
-		CAMERA.setRotation(player != null ? player.yaw : 0.0F, 20.0F);
-		CAMERA.orbit(world, deadPlayer, lastTarget, distance);
-		DeathReplayClient.LOGGER.info("Replay started: {} ticks, {} puppets", frozen.tickCount(), PUPPETS.size());
 	}
 
 	/**
-	 * Called when the replay screen goes away: playback ends, the world returns to the present,
+	 * Called when the replay screen goes away: playback ends, the real world is back on screen,
 	 * and the still is shown again if the player is still on the death screen.
 	 */
 	static void endPlayback(MinecraftClient client) {
@@ -295,7 +329,13 @@ public final class Replay {
 	 * A server that keeps sending the scene keeps its live view, and no still is shown.
 	 */
 	private static boolean shouldShowStill(MinecraftClient client) {
-		return DeathView.isActive() && isAvailable(client) && !hasLiveEntitiesNearby(client);
+		Recording frozen = Recorder.getFrozen();
+		return frozen != null
+			&& DeathView.isActive()
+			&& canPlay(client)
+			&& client.player.isDead()
+			&& client.world.getRegistryKey() == frozen.dimension()
+			&& !hasLiveEntitiesNearby(client);
 	}
 
 	private static boolean hasLiveEntitiesNearby(MinecraftClient client) {
@@ -309,49 +349,57 @@ public final class Replay {
 		return false;
 	}
 
-	/** Ends the replay and puts the world back exactly as the server last described it. */
+	/** Ends playback or the still. After this the game shows its real world, unchanged. */
 	public static void stop(MinecraftClient client) {
 		if (!isActive()) {
 			return;
 		}
 
-		ClientWorld replayWorld = world;
-		if (client.world == replayWorld && replayWorld != null) {
-			removeAllPuppets(replayWorld);
+		if (stage != null) {
+			// Cracks drawn on blocks live in the shared world renderer, not in the stage.
 			for (BlockBreak blockBreak : BLOCK_BREAKS) {
-				replayWorld.setBlockBreakingInfo(blockBreak.entityId(), blockBreak.pos(), -1);
+				stage.setBlockBreakingInfo(blockBreak.entityId(), blockBreak.pos(), -1);
 			}
 
-			// Back to the state at the end of the recording...
-			setBlocksThrough(replayWorld, recording.tickCount() - 1);
+			stage = null;
+			// Hand the renderers back to whatever the real world is now (possibly none).
+			attachRenderers(client, client.world);
+		} else if (world != null && client.world == world) {
+			removeAllPuppets(world);
 		}
 
 		recording = null;
 		world = null;
-		deadPlayer = null;
+		boundWorld = null;
+		boundPlayer = null;
 		playing = false;
 		still = false;
 		controlling = false;
 		stopRequested = false;
+		pendingSeek = NO_SEEK;
 		PUPPETS.clear();
 		PUPPET_ENTITIES.clear();
 		BLOCK_BREAKS.clear();
 		INPUT.releaseMouse(client);
-
-		// ...then everything the server sent while the replay was running, in order.
-		// (The replay is no longer active here, so these go straight into the world.)
-		if (client.world == replayWorld && replayWorld != null) {
-			for (DeferredBlockUpdate update : DEFERRED_BLOCK_UPDATES) {
-				replayWorld.handleBlockUpdate(update.pos(), update.state(), update.flags());
-			}
-		}
-
-		DEFERRED_BLOCK_UPDATES.clear();
 		DeathReplayClient.LOGGER.info("Replay stopped");
 	}
 
+	/** Points everything that draws the world at {@code target}. The game's own world field is not changed. */
+	private static void attachRenderers(MinecraftClient client, @Nullable ClientWorld target) {
+		client.worldRenderer.setWorld(target);
+		client.particleManager.setWorld(target);
+		client.gameRenderer.setWorld(target);
+	}
+
+	/**
+	 * A replay belongs to the world and player it was started with. A respawn, a dimension
+	 * change or a disconnect ends it; the still additionally needs the player to be dead.
+	 */
 	private static boolean isStillValid(MinecraftClient client) {
-		return client.world == world && client.player == deadPlayer && deadPlayer != null && deadPlayer.isDead();
+		return client.world == boundWorld
+			&& client.player == boundPlayer
+			&& boundPlayer != null
+			&& (!still || boundPlayer.isDead());
 	}
 
 	// ---------------------------------------------------------------- tick
@@ -386,7 +434,15 @@ public final class Replay {
 			return;
 		}
 
-		if (playing && !client.isPaused()) {
+		// The stage is not the game's world, so nobody else ticks its entities.
+		stage.tickEntities();
+
+		if (pendingSeek != NO_SEEK) {
+			jumpTo(pendingSeek);
+			pendingSeek = NO_SEEK;
+		}
+
+		if (playing) {
 			if (isAtEnd()) {
 				// The last frame's own blocks and effects have not been shown yet.
 				setBlocksThrough(world, tick);
@@ -443,21 +499,6 @@ public final class Replay {
 				}
 			}
 		}
-	}
-
-	/**
-	 * Called for every block update the server sends. While a replay runs the update is queued
-	 * (returns true) instead of being applied to a world that is showing the past; it is
-	 * applied when the replay ends.
-	 */
-	public static boolean deferBlockUpdate(ClientWorld updatedWorld, BlockPos pos, BlockState state, int flags) {
-		// The still does not rewind the world, so there is nothing to protect from updates.
-		if (!isPlayback() || updatedWorld != world) {
-			return false;
-		}
-
-		DEFERRED_BLOCK_UPDATES.add(new DeferredBlockUpdate(pos.toImmutable(), state, flags));
-		return true;
 	}
 
 	// ---------------------------------------------------------------- puppets
@@ -685,7 +726,7 @@ public final class Replay {
 			}
 			case THIRD_PERSON -> {
 				CAMERA.rotate(yawDelta, pitchDelta);
-				CAMERA.orbit(world, player != null ? player : deadPlayer, lastTarget, distance);
+				CAMERA.orbit(world, player != null ? player : boundPlayer, lastTarget, distance);
 			}
 			case FREE -> {
 				CAMERA.rotate(yawDelta, pitchDelta);
@@ -726,12 +767,23 @@ public final class Replay {
 	/** Jumps to a tick, keeping the play / pause state. */
 	public static void seek(int target) {
 		if (isPlayback()) {
+			pendingSeek = NO_SEEK;
 			jumpTo(target);
 		}
 	}
 
+	/**
+	 * Like {@link #seek}, but carried out on the next tick. For dragging the timeline, where
+	 * many requests arrive per tick and only the last one matters.
+	 */
+	public static void requestSeek(int target) {
+		if (isPlayback()) {
+			pendingSeek = MathHelper.clamp(target, 0, recording.tickCount() - 1);
+		}
+	}
+
 	public static void seekRelative(int direction) {
-		seek(tick + direction * SEEK_TICKS);
+		seek(getTick() + direction * SEEK_TICKS);
 	}
 
 	public static void setView(ReplayView newView) {
@@ -751,18 +803,24 @@ public final class Replay {
 		}
 	}
 
+	/** Movement keys steer the camera while the replay screen is open. */
 	static void setControlling(MinecraftClient client, boolean value) {
 		controlling = value && isPlayback();
-		if (controlling) {
+		if (!controlling) {
+			INPUT.releaseMouse(client);
+		}
+	}
+
+	/** The mouse turns the camera only while it is held for that (right button on the replay screen). */
+	static void setLooking(MinecraftClient client, boolean looking) {
+		if (looking && controlling) {
 			INPUT.grabMouse(client);
 		} else {
 			INPUT.releaseMouse(client);
 		}
 	}
 
-	static void regrabMouse(MinecraftClient client) {
-		if (controlling) {
-			INPUT.grabMouse(client);
-		}
+	public static boolean isLooking() {
+		return INPUT.isMouseGrabbed();
 	}
 }

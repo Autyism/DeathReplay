@@ -13,7 +13,9 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
+import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,12 +25,15 @@ public class DeathReplayClient implements ClientModInitializer {
 
 	/** Opens the settings without Mod Menu. Unbound by default. */
 	private static KeyBinding openSettingsKey;
+	/** Plays the latest death replay; the way in after respawning. */
+	private static KeyBinding watchReplayKey;
 
 	@Override
 	public void onInitializeClient() {
 		DeathReplayConfig.get();
 		KeyBinding.Category category = KeyBinding.Category.create(Identifier.of(MOD_ID, "main"));
 		openSettingsKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.deathreplay.open_settings", InputUtil.UNKNOWN_KEY.getCode(), category));
+		watchReplayKey = KeyBindingHelper.registerKeyBinding(new KeyBinding("key.deathreplay.watch_replay", GLFW.GLFW_KEY_F6, category));
 
 		ClientTickEvents.END_CLIENT_TICK.register(Recorder::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(Replay::tick);
@@ -47,6 +52,19 @@ public class DeathReplayClient implements ClientModInitializer {
 			if (client.currentScreen == null) {
 				client.setScreen(new SettingsScreen(null));
 			}
+		}
+
+		while (watchReplayKey.wasPressed()) {
+			if (client.currentScreen == null && client.player != null && !Replay.open(client)) {
+				client.player.sendMessage(Text.translatable("deathreplay.message.no_replay"), true);
+			}
+		}
+	}
+
+	/** Tells the freshly respawned player how to watch the replay of the death just now. */
+	public static void showRespawnHint(MinecraftClient client) {
+		if (client.player != null && DeathReplayConfig.get().respawnHint && watchReplayKey != null && !watchReplayKey.isUnbound()) {
+			client.player.sendMessage(Text.translatable("deathreplay.message.respawn_hint", watchReplayKey.getBoundKeyLocalizedText()), false);
 		}
 	}
 }

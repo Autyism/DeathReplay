@@ -31,6 +31,8 @@ public final class DeathReplayConfig {
 	public boolean autoSave = false;
 	/** Camera the replay starts in. */
 	public ReplayView replayView = ReplayView.THIRD_PERSON;
+	/** After respawning, say in chat which key plays the replay. */
+	public boolean respawnHint = true;
 	/** Death screen free camera on/off. */
 	public boolean deathFreeCamera = true;
 	/** Camera mode the death screen starts in. */

@@ -36,8 +36,9 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>When the player dies the buffer stops rolling: no older frame is dropped any more, a
  * short tail is appended (the server keeps sending the scene for one more second, which is
- * the death animation), and the result is frozen into a {@link Recording}. The recording
- * belongs to that one death: it is dropped when the player respawns or leaves the world.
+ * the death animation), a copy of the surrounding terrain is taken, and the result is frozen
+ * into a {@link Recording}. It stays available, also after the respawn, until the next death
+ * replaces it or the player leaves the server.
  */
 public final class Recorder {
 	/** Entities further away than this from the player are not recorded. */
@@ -81,19 +82,51 @@ public final class Recorder {
 	private static long deathTimeMillis;
 	@Nullable
 	private static Text deathMessage;
+	/** Recording of the death the player is still dead from; {@code null} once respawned. */
 	@Nullable
 	private static Recording frozen;
+	/** The most recent recording of this session on this server, respawned or not. */
+	@Nullable
+	private static Recording last;
+	/** True from a death until the hint about the replay key has been shown after the respawn. */
+	private static boolean respawnHintPending;
 	private static long tickCounter;
+	// Cost of the per-tick capture, for the self-test and for anyone who wants to check.
+	private static long captureNanosTotal;
+	private static long captureNanosMax;
+	private static long captureCount;
 
 	private Recorder() {
 	}
 
 	// ---------------------------------------------------------------- queries
 
-	/** The recording of the death the player is currently looking at, if any. */
+	/** The recording of the death the player has not respawned from yet, if any. */
 	@Nullable
 	public static Recording getFrozen() {
 		return frozen;
+	}
+
+	/** The latest recording, whether or not the player has respawned since. */
+	@Nullable
+	public static Recording getLast() {
+		return last;
+	}
+
+	/** Average time one tick of recording has cost so far, in microseconds. */
+	public static double averageCaptureMicros() {
+		return captureCount == 0L ? 0.0 : captureNanosTotal / 1000.0 / captureCount;
+	}
+
+	/** The most expensive single tick of recording so far, in microseconds. */
+	public static double maxCaptureMicros() {
+		return captureNanosMax / 1000.0;
+	}
+
+	public static void resetCaptureStats() {
+		captureNanosTotal = 0L;
+		captureNanosMax = 0L;
+		captureCount = 0L;
 	}
 
 	/** True while events should be collected. */
@@ -112,23 +145,26 @@ public final class Recorder {
 		ClientPlayerEntity currentPlayer = client.player;
 		ClientWorld currentWorld = client.world;
 		if (currentPlayer == null || currentWorld == null) {
-			if (world != null) {
+			if (world != null || last != null) {
+				// Left the server: a recording is only meaningful with that server's registries.
 				reset();
+				last = null;
+				respawnHintPending = false;
 			}
 
 			return;
 		}
 
-		if (currentWorld != world) {
-			// New world (join, dimension change): entity ids and block history start over.
+		if (currentWorld != world || currentPlayer != player) {
+			// New world (join, dimension change) or new player object (respawn): entity ids and
+			// block history start over. The last frozen recording is kept for watching later.
 			reset();
 			world = currentWorld;
 			player = currentPlayer;
-		} else if (currentPlayer != player) {
-			// Same world, new player object: respawn. The old death's recording is over.
-			reset();
-			world = currentWorld;
-			player = currentPlayer;
+			if (respawnHintPending && !currentPlayer.isDead()) {
+				respawnHintPending = false;
+				DeathReplayClient.showRespawnHint(client);
+			}
 		}
 
 		if (client.isPaused()) {
@@ -190,19 +226,25 @@ public final class Recorder {
 		state = State.FROZEN;
 
 		EntitySample atDeath = frames.get(deathFrame).find(currentPlayer.getId());
+		long snapshotStart = System.nanoTime();
+		int radius = Math.min(WorldSnapshot.MAX_RADIUS, client.options.getClampedViewDistance());
+		WorldSnapshot snapshot = WorldSnapshot.capture(currentWorld, currentPlayer.getChunkPos(), radius);
+		double snapshotMillis = (System.nanoTime() - snapshotStart) / 1.0e6;
 		frozen = new Recording(
 			frames,
 			deathFrame,
 			currentPlayer.getId(),
 			currentPlayer.getGameProfile().name(),
 			currentPlayer.getUuid(),
-			currentWorld.getRegistryKey(),
+			snapshot,
 			atDeath != null ? atDeath.pos() : currentPlayer.getEntityPos(),
 			deathMessage,
 			deathTimeMillis
 		);
-		DeathReplayClient.LOGGER.info("Froze death recording: {} ticks ({} s), death at tick {}",
-			frames.size(), String.format("%.1f", frozen.seconds()), deathFrame);
+		last = frozen;
+		respawnHintPending = true;
+		DeathReplayClient.LOGGER.info("Froze death recording: {} ticks ({} s), death at tick {}, {} chunks of terrain copied in {} ms",
+			frames.size(), String.format("%.1f", frozen.seconds()), deathFrame, snapshot.chunks().size(), String.format("%.1f", snapshotMillis));
 
 		if (DeathReplayConfig.get().autoSave) {
 			ReplayFileWriter.saveAsync(client, frozen, currentWorld.getRegistryManager());
@@ -212,6 +254,7 @@ public final class Recorder {
 	// ---------------------------------------------------------------- frame capture
 
 	private static void captureFrame(ClientWorld currentWorld, ClientPlayerEntity currentPlayer) {
+		long start = System.nanoTime();
 		List<EntitySample> samples = new ArrayList<>();
 		IntSet seen = new IntOpenHashSet();
 		double maxDistanceSquared = CAPTURE_RADIUS * CAPTURE_RADIUS;
@@ -236,6 +279,11 @@ public final class Recorder {
 		APPEARANCES.keySet().retainAll(seen);
 		BUFFER.addLast(new Frame(samples.toArray(EntitySample[]::new), PENDING_EVENTS.toArray(RecordedEvent[]::new)));
 		PENDING_EVENTS.clear();
+
+		long nanos = System.nanoTime() - start;
+		captureNanosTotal += nanos;
+		captureNanosMax = Math.max(captureNanosMax, nanos);
+		captureCount++;
 	}
 
 	private static EntitySample sample(Entity entity, boolean localPlayer) {

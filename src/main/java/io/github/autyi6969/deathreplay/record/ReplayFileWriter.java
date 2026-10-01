@@ -40,6 +40,7 @@ import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
 import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
 import net.minecraft.registry.DynamicRegistryManager;
 import net.minecraft.registry.Registries;
+import net.minecraft.text.Text;
 import net.minecraft.util.Util;
 import org.jetbrains.annotations.Nullable;
 
@@ -139,6 +140,21 @@ public final class ReplayFileWriter {
 				savingRecording = null;
 			}
 		}, Util.getIoWorkerExecutor());
+	}
+
+	/** Saves {@code recording} and tells the player in chat how it went. For the Save buttons. */
+	public static void saveAndAnnounce(MinecraftClient client, Recording recording) {
+		if (client.world == null) {
+			return;
+		}
+
+		saveAsync(client, recording, client.world.getRegistryManager()).thenAcceptAsync(file -> {
+			if (client.player != null) {
+				client.player.sendMessage(file != null
+					? Text.translatable("deathreplay.message.saved", file.getFileName().toString())
+					: Text.translatable("deathreplay.message.save_failed"), false);
+			}
+		}, client);
 	}
 
 	// ---------------------------------------------------------------- serialization

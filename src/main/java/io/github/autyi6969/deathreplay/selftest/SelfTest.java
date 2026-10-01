@@ -31,6 +31,9 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.Click;
+import net.minecraft.client.input.MouseInput;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.client.gui.screen.DeathScreen;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.option.Perspective;
@@ -55,6 +58,7 @@ import net.minecraft.world.gen.GeneratorOptions;
 import net.minecraft.world.gen.WorldPresets;
 import net.minecraft.world.level.LevelInfo;
 import net.minecraft.world.rule.GameRules;
+import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -252,6 +256,8 @@ public final class SelfTest {
 			check("armor stand equipment was recorded", stand != null && stand.appearance.equipment() != null
 				&& stand.appearance.equipment()[EquipmentSlot.HEAD.ordinal()].isOf(Items.DIAMOND_HELMET));
 			check("spawn packet was kept for the armor stand", stand != null && stand.appearance.spawnPacket() != null);
+			LOGGER.info("[SelfTest] terrain snapshot: {} chunks, radius {}", recording.snapshot().chunks().size(), recording.snapshot().radius());
+			check("the terrain around the death was copied", recording.snapshot().chunks().size() >= 9);
 		});
 
 		waitUntil("recording saved to disk", () -> ReplayFileWriter.getLastSavedFile() != null, 100);
@@ -383,7 +389,7 @@ public final class SelfTest {
 		run("check settings screen", c -> {
 			check("settings screen is open", c.currentScreen instanceof SettingsScreen);
 			LOGGER.info("[SelfTest] settings screen has {} widgets", c.currentScreen.children().size());
-			check("settings screen has its 5 options and the Done button", c.currentScreen.children().size() == 6);
+			check("settings screen has its 6 options and the Done button", c.currentScreen.children().size() == 7);
 		});
 		screenshot("settings_screen");
 		run("close settings", c -> c.currentScreen.close());
@@ -425,7 +431,8 @@ public final class SelfTest {
 		});
 		waitTicks("second replay runs", 10);
 		run("respawn while the replay is running", c -> {
-			check("replay is running and shows the past (block not placed yet)", Replay.isActive() && c.world.getBlockState(testBlock).isAir());
+			check("replay is running and shows the past (block not placed yet)", Replay.isPlayback() && Replay.getStage().getBlockState(testBlock).isAir());
+			check("the real world still has the block while the replay shows the past", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
 			// Exactly what the vanilla Respawn button sends; here it stands for any respawn the
 			// server decides on while a replay is open.
 			c.player.requestRespawn();
@@ -435,12 +442,12 @@ public final class SelfTest {
 		run("check the replay ended with the respawn", c -> {
 			Camera camera = c.gameRenderer.getCamera();
 			double distance = camera.getCameraPos().distanceTo(c.player.getEyePos());
-			check("replay stopped by itself", !Replay.isActive());
+			check("replay stopped by itself", !Replay.isActive() && Replay.getStage() == null);
 			check("replay screen closed by itself", c.currentScreen == null);
-			check("the recording was dropped", Recorder.getFrozen() == null);
-			check("replay is no longer offered", !Replay.isAvailable(c));
+			check("the death is over: no still any more", Recorder.getFrozen() == null);
+			check("the recording is kept for watching after the respawn", Recorder.getLast() != null && Replay.isAvailable(c));
 			check("camera is back at the living player's eyes", distance < 0.5 && !camera.isThirdPerson());
-			check("world is back in the present: block is placed", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
+			check("the real world was never changed: block is placed", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
 			int leftovers = 0;
 			for (Entity entity : c.world.getEntities()) {
 				if (entity.getId() < 0) {
@@ -449,10 +456,122 @@ public final class SelfTest {
 			}
 
 			check("no puppet survived the respawn", leftovers == 0 && Replay.puppetCount() == 0);
-			command(c, "setblock 3 -60 8 minecraft:air");
 		});
 		waitTicks("settle", 20);
 		screenshot("after_respawn_during_replay");
+
+		// ---- watching the replay after respawning, alive, standing somewhere else
+		Vec3d[] playerPos = new Vec3d[1];
+		run("open the replay after respawning", c -> {
+			c.inGameHud.getChatHud().clear(false);
+			playerPos[0] = c.player.getEntityPos();
+			LOGGER.info("[SelfTest] alive at {}, death was at {}", playerPos[0], Recorder.getLast().deathPos());
+			check("the player is alive", !c.player.isDead());
+			check("replay opened after respawning", Replay.open(c));
+		});
+		waitTicks("replay after respawn runs", 12);
+		run("check the replay after respawning", c -> {
+			check("replay screen is open", c.currentScreen instanceof ReplayScreen);
+			check("playback runs on its stage", Replay.isPlayback() && Replay.getStage() != null);
+			check("the stage shows the past: block not placed yet", Replay.getStage().getBlockState(testBlock).isAir());
+			check("the real world shows the present: block is placed", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
+			check("the player has a puppet on the stage", Replay.getPlayerPuppet() instanceof PuppetPlayerEntity);
+			check("the real player is still alive and in the real world", !c.player.isDead() && c.player.getEntityWorld() == c.world);
+			double camToDeath = c.gameRenderer.getCamera().getCameraPos().distanceTo(Recorder.getLast().playerAt(Replay.getTick()).pos());
+			LOGGER.info("[SelfTest] replay camera is {} blocks from the recorded player", String.format("%.2f", camToDeath));
+			check("the camera is at the recorded scene", camToDeath < 12.0);
+		});
+		screenshot("replay_after_respawn");
+		waitUntil("replay after respawn reaches the end", () -> Replay.isAtEnd() && !Replay.isPlaying(), 200);
+		waitTicks("end", 3);
+		screenshot("replay_after_respawn_end");
+		run("close the replay after respawning", c -> c.currentScreen.close());
+		waitTicks("closed", 5);
+		run("check the game is back to normal", c -> {
+			Camera camera = c.gameRenderer.getCamera();
+			check("back in the game, no screen", c.currentScreen == null);
+			check("replay is over and the stage is gone", !Replay.isActive() && Replay.getStage() == null);
+			check("camera is back at the player's eyes, first person", camera.getCameraPos().distanceTo(c.player.getEyePos()) < 0.5 && !camera.isThirdPerson());
+			check("the real player did not move while watching", c.player.getEntityPos().distanceTo(playerPos[0]) < 0.01);
+			check("the real world shows the present: block is placed", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
+			check("the recording can be watched again", Replay.isAvailable(c));
+		});
+		waitTicks("real world on screen again", 20);
+		screenshot("back_in_game_after_replay");
+		run("remove the test block", c -> command(c, "setblock 3 -60 8 minecraft:air"));
+		waitTicks("settle", 5);
+	}
+
+	/** The replay screen's own controls, driven through the same handlers real mouse input goes through. */
+	private void replayControlsScript() {
+		Click[] lastClick = new Click[1];
+
+		run("click the timeline at one quarter", c -> {
+			ReplayScreen screen = (ReplayScreen) c.currentScreen;
+			Replay.setPlaying(true);
+			int barWidth = Math.min(300, screen.width - 40);
+			int barLeft = screen.width / 2 - barWidth / 2;
+			lastClick[0] = new Click(barLeft + barWidth * 0.25, 25.0, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_LEFT, 0));
+			check("a click on the timeline is taken", screen.mouseClicked(lastClick[0], false));
+		});
+		waitTicks("seek applied", 2);
+		run("check the click seeked, then drag to three quarters", c -> {
+			ReplayScreen screen = (ReplayScreen) c.currentScreen;
+			int last = Replay.getRecording().tickCount() - 1;
+			LOGGER.info("[SelfTest] timeline click at 25% -> tick {} of {}", Replay.getTick(), last);
+			check("clicking the timeline jumps there", Math.abs(Replay.getTick() - last * 0.25) <= 2.0);
+			check("playback holds while the timeline is held", !Replay.isPlaying());
+			int barWidth = Math.min(300, screen.width - 40);
+			int barLeft = screen.width / 2 - barWidth / 2;
+			Click drag = new Click(barLeft + barWidth * 0.75, 40.0, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_LEFT, 0));
+			check("dragging the timeline is taken", screen.mouseDragged(drag, drag.x() - lastClick[0].x(), 15.0));
+			lastClick[0] = drag;
+		});
+		waitTicks("drag applied", 2);
+		run("check the drag seeked, then let go", c -> {
+			ReplayScreen screen = (ReplayScreen) c.currentScreen;
+			int last = Replay.getRecording().tickCount() - 1;
+			LOGGER.info("[SelfTest] timeline drag to 75% -> tick {} of {}", Replay.getTick(), last);
+			check("dragging the timeline follows the mouse", Math.abs(Replay.getTick() - last * 0.75) <= 2.0);
+			check("the stage follows the drag (block removed again by then)", Replay.getStage().getBlockState(new BlockPos(3, -60, 8)).isAir());
+			screen.mouseReleased(lastClick[0]);
+			check("playback resumes when the timeline is let go", Replay.isPlaying());
+		});
+		screenshot("replay_after_timeline_drag");
+
+		run("click the Pause button", c -> {
+			ReplayScreen screen = (ReplayScreen) c.currentScreen;
+			check("the Pause button is hit", screen.mouseClicked(buttonClick(screen, 1), false));
+			check("the Pause button pauses", !Replay.isPlaying());
+		});
+		waitTicks("paused by button", 5);
+		run("click the view button", c -> {
+			ReplayScreen screen = (ReplayScreen) c.currentScreen;
+			ReplayView before = Replay.getView();
+			check("the view button is hit", screen.mouseClicked(buttonClick(screen, 2), false));
+			check("the view button switches the view", Replay.getView() == before.next());
+			Replay.setView(ReplayView.THIRD_PERSON);
+		});
+		run("hold the right mouse button to look", c -> {
+			ReplayScreen screen = (ReplayScreen) c.currentScreen;
+			Click right = new Click(screen.width / 2.0, screen.height / 2.0, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0));
+			screen.mouseClicked(right, false);
+			// The mouse can only be grabbed while the window has focus, which an unattended run may not have.
+			check("right button grabs the mouse for looking (when the window has focus)", Replay.isLooking() == c.isWindowFocused());
+			screen.mouseReleased(right);
+			check("releasing the right button frees the mouse", !Replay.isLooking());
+		});
+		screenshot("replay_paused_by_button");
+	}
+
+	/** A left click in the middle of the n-th button of the replay screen's bottom row. */
+	private static Click buttonClick(ReplayScreen screen, int index) {
+		int count = 5;
+		int gap = 4;
+		int buttonWidth = Math.min(78, (screen.width - 16 - gap * (count - 1)) / count);
+		int x = (screen.width - (buttonWidth * count + gap * (count - 1))) / 2 + index * (buttonWidth + gap) + buttonWidth / 2;
+		int y = screen.height - 20 - 6 + 10;
+		return new Click(x, y, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_LEFT, 0));
 	}
 
 	/** Feature (c): the replay. Runs on the death screen, after the recorder checks. */
@@ -464,7 +583,7 @@ public final class SelfTest {
 		run("open replay", c -> {
 			// Chat lines would cover the lower half of every screenshot.
 			c.inGameHud.getChatHud().clear(false);
-			check("replay is available on the death screen", Replay.isAvailable(c));
+			check("replay is available on the death screen", Replay.isAvailable(c) && Recorder.getFrozen() == Recorder.getLast());
 			LOGGER.info("[SelfTest] still: {} puppets", Replay.puppetCount());
 			check("the frozen last frame is shown on the death screen", Replay.isStill() && Replay.puppetCount() >= 3);
 			check("replay opened", Replay.open(c));
@@ -477,19 +596,29 @@ public final class SelfTest {
 			LOGGER.info("[SelfTest] replay: {} puppets at tick {}", Replay.puppetCount(), Replay.getTick());
 			check("puppets were created", Replay.puppetCount() >= 3);
 			check("the player has a puppet", Replay.getPlayerPuppet() instanceof PuppetPlayerEntity);
-			check("world was rewound: test block not placed yet", c.world.getBlockState(testBlock).isAir());
-			int realVisible = 0;
-			int puppets = 0;
-			for (Entity entity : c.world.getEntities()) {
+			ClientWorld stage = Replay.getStage();
+			check("the replay plays on a stage of its own, not in the game's world", stage != null && stage != c.world);
+			check("the stage was rewound: test block not placed yet", stage.getBlockState(testBlock).isAir());
+			check("the stage has the recorded terrain", stage.getBlockState(new BlockPos(2, -60, 3)).isOf(Blocks.GOLD_BLOCK));
+			int onStage = 0;
+			int strangers = 0;
+			for (Entity entity : stage.getEntities()) {
 				if (Replay.isPuppet(entity)) {
-					puppets++;
-				} else if (!Replay.hidesEntity(entity)) {
-					realVisible++;
+					onStage++;
+				} else {
+					strangers++;
 				}
 			}
 
-			check("puppets are in the world", puppets == Replay.puppetCount());
-			check("real entities are hidden during the replay", realVisible == 0);
+			int puppetsInRealWorld = 0;
+			for (Entity entity : c.world.getEntities()) {
+				if (entity.getId() < 0) {
+					puppetsInRealWorld++;
+				}
+			}
+
+			check("the stage holds the puppets and nothing else", onStage == Replay.puppetCount() && strangers == 0);
+			check("no puppet is in the real world during playback", puppetsInRealWorld == 0);
 		});
 
 		Vec3d[] puppetStart = new Vec3d[1];
@@ -505,7 +634,8 @@ public final class SelfTest {
 
 		waitUntil("replay tick 70 (block placed)", () -> Replay.getTick() >= 70, 100);
 		run("check the block change is replayed", c ->
-			check("test block is there during the replay", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK)));
+			check("test block is on the stage while the real world is untouched",
+				Replay.getStage().getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK) && c.world.getBlockState(testBlock).isAir()));
 		screenshot("replay_third_person_block_placed");
 
 		run("first person", c -> Replay.setView(ReplayView.FIRST_PERSON));
@@ -522,7 +652,7 @@ public final class SelfTest {
 
 		waitUntil("replay tick 96 (block removed)", () -> Replay.getTick() >= 96, 100);
 		run("check the block removal is replayed", c ->
-			check("test block is gone again during the replay", c.world.getBlockState(testBlock).isAir()));
+			check("test block is gone again during the replay", Replay.getStage().getBlockState(testBlock).isAir()));
 
 		run("free view, fly up and backwards", c -> {
 			Replay.setView(ReplayView.FREE);
@@ -559,21 +689,23 @@ public final class SelfTest {
 		run("check seek and pause", c -> {
 			check("seek jumped to the requested tick and pause holds it", Replay.getTick() == 40 && !Replay.isPlaying());
 			check("puppets exist after seeking", Replay.puppetCount() >= 3);
-			check("world was rewound by the seek", c.world.getBlockState(testBlock).isAir());
+			check("the stage was rewound by the seek", Replay.getStage().getBlockState(testBlock).isAir());
 		});
 		screenshot("replay_paused_after_seek");
 
 		run("seek into the block window", c -> Replay.seek(66));
 		waitTicks("after seek", 2);
 		run("check seeking forward applies block changes", c ->
-			check("test block is there after seeking forward", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK)));
+			check("test block is there after seeking forward", Replay.getStage().getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK)));
+
+		replayControlsScript();
 
 		run("close the replay", c -> c.currentScreen.close());
 		waitTicks("replay closed", 3);
 		run("check everything is put back", c -> {
-			check("playback is over", !Replay.isPlayback());
+			check("playback is over and the stage is gone", !Replay.isPlayback() && Replay.getStage() == null);
 			check("death screen is back", c.currentScreen instanceof DeathScreen);
-			check("world is back in the present: test block is gone", c.world.getBlockState(testBlock).isAir());
+			check("the real world is as it was: test block is gone", c.world.getBlockState(testBlock).isAir());
 			int puppets = 0;
 			for (Entity entity : c.world.getEntities()) {
 				if (entity.getId() < 0) {

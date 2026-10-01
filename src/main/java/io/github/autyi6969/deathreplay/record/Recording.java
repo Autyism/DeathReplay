@@ -17,7 +17,8 @@ import org.jetbrains.annotations.Nullable;
  * @param playerEntityId entity id of the recording player inside the frames
  * @param playerName     name of the recording player
  * @param playerUuid     UUID of the recording player
- * @param dimension      dimension the death happened in
+ * @param snapshot       the terrain around the death, so the replay does not depend on the
+ *                       live world still being there
  * @param deathPos       where the player died
  * @param deathMessage   the death message shown on the death screen, if the server sent one
  * @param deathTimeMillis wall-clock time of the death
@@ -28,12 +29,17 @@ public record Recording(
 	int playerEntityId,
 	String playerName,
 	UUID playerUuid,
-	RegistryKey<World> dimension,
+	WorldSnapshot snapshot,
 	Vec3d deathPos,
 	@Nullable Text deathMessage,
 	long deathTimeMillis
 ) {
 	public static final int TICKS_PER_SECOND = 20;
+
+	/** Dimension the death happened in. */
+	public RegistryKey<World> dimension() {
+		return this.snapshot.dimension();
+	}
 
 	public int tickCount() {
 		return this.frames.size();

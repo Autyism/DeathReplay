@@ -1,7 +1,5 @@
 package io.github.autyi6969.deathreplay.death;
 
-import java.nio.file.Path;
-
 import io.github.autyi6969.deathreplay.config.DeathReplayConfig;
 import io.github.autyi6969.deathreplay.record.Recorder;
 import io.github.autyi6969.deathreplay.record.Recording;
@@ -66,7 +64,8 @@ public final class DeathScreenButtons {
 		// another thread, so the buttons follow the state tick by tick.
 		Runnable refresh = () -> {
 			Recording recording = Recorder.getFrozen();
-			replay.active = Replay.isAvailable(client);
+			// On the death screen "Replay" means this death, not an older one still in memory.
+			replay.active = recording != null && Replay.canPlay(client);
 			boolean saved = recording != null && ReplayFileWriter.isSaved(recording);
 			save.active = recording != null && !saved && !ReplayFileWriter.isSaving(recording);
 			save.setMessage(Text.translatable(saved ? "deathreplay.button.saved" : "deathreplay.button.save"));
@@ -77,18 +76,8 @@ public final class DeathScreenButtons {
 
 	private static void save(MinecraftClient client) {
 		Recording recording = Recorder.getFrozen();
-		if (recording == null || client.world == null) {
-			return;
-		}
-
-		ReplayFileWriter.saveAsync(client, recording, client.world.getRegistryManager()).thenAcceptAsync(file -> showSaveResult(client, file), client);
-	}
-
-	private static void showSaveResult(MinecraftClient client, Path file) {
-		if (client.player != null) {
-			client.player.sendMessage(file != null
-				? Text.translatable("deathreplay.message.saved", file.getFileName().toString())
-				: Text.translatable("deathreplay.message.save_failed"), false);
+		if (recording != null) {
+			ReplayFileWriter.saveAndAnnounce(client, recording);
 		}
 	}
 }

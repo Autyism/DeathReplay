@@ -3,14 +3,15 @@
 	"package": "io.github.autyi6969.deathreplay.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+		"BiomeAccessAccessor",
 		"CameraMixin",
 		"ClientPlayNetworkHandlerMixin",
-		"ClientWorldMixin",
 		"DataTrackerAccessor",
 		"EntityRenderManagerMixin",
 		"GameOptionsMixin",
 		"GameRendererMixin",
 		"InGameHudMixin",
+		"LightmapTextureManagerMixin",
 		"WorldMixin"
 	],
 	"injectors": {
