@@ -25,7 +25,7 @@ public final class DeathView {
 	public static final double MAX_DISTANCE = 20.0;
 	public static final double MIN_FLY_SPEED = 2.0;
 	public static final double MAX_FLY_SPEED = 40.0;
-	/** Free flight cannot leave this radius around the corpse: it is for looking at the fight, not for scouting. */
+	/** Free flight stays within this radius of the corpse. */
 	public static final double MAX_FREE_RADIUS = 64.0;
 	private static final double DEFAULT_DISTANCE = 4.5;
 	private static final double DEFAULT_FLY_SPEED = 10.0;
@@ -165,7 +165,7 @@ public final class DeathView {
 			case FREE -> {
 				CAMERA.rotate(yawDelta, pitchDelta);
 				double speed = flySpeed * (input.sprint || SYNTHETIC_INPUT.sprint ? SPRINT_MULTIPLIER : 1.0);
-				CAMERA.fly(world, target, MAX_FREE_RADIUS, forward, strafe, up, speed * seconds);
+				CAMERA.fly(target, MAX_FREE_RADIUS, forward, strafe, up, speed * seconds);
 			}
 		}
 

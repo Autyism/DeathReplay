@@ -2,7 +2,6 @@ package io.github.autyi6969.deathreplay.camera;
 
 import net.minecraft.entity.Entity;
 import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.Box;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.RaycastContext;
@@ -12,14 +11,12 @@ import net.minecraft.world.World;
  * A camera pose that is not tied to an entity, plus the two ways of moving it:
  * on a leash around a target ({@link #orbit}) and free flight ({@link #fly}).
  *
- * <p>The camera never passes through solid blocks: the leash is shortened by walls and free
- * flight collides with them. It only ever shows what a legitimate camera position could see.
+ * <p>The leash is shortened by walls, like the vanilla third-person camera, so the view is
+ * not buried inside a block. Free flight passes through blocks, like any free camera.
  */
 public final class DetachedCamera {
 	public static final float MIN_PITCH = -89.0F;
 	public static final float MAX_PITCH = 89.0F;
-	/** Half the edge length of the camera's collision box. */
-	private static final double COLLISION_HALF_SIZE = 0.2;
 
 	private Vec3d pos = Vec3d.ZERO;
 	private float yaw;
@@ -73,11 +70,11 @@ public final class DetachedCamera {
 	}
 
 	/**
-	 * Free flight. {@code forward}/{@code strafe} are relative to the current yaw, {@code up} is
-	 * world-vertical; each in -1..1. The camera stops at solid blocks and cannot go further than
-	 * {@code maxRadius} from {@code anchor}.
+	 * Free flight. {@code forward}/{@code strafe} are relative to the current yaw (strafe is
+	 * positive to the left), {@code up} is world-vertical; each in -1..1. Blocks do not stop the
+	 * camera. It cannot go further than {@code maxRadius} from {@code anchor}.
 	 */
-	public void fly(World world, Vec3d anchor, double maxRadius, double forward, double strafe, double up, double blocks) {
+	public void fly(Vec3d anchor, double maxRadius, double forward, double strafe, double up, double blocks) {
 		if (forward == 0.0 && strafe == 0.0 && up == 0.0) {
 			return;
 		}
@@ -91,34 +88,13 @@ public final class DetachedCamera {
 			wish = wish.normalize();
 		}
 
-		Vec3d delta = wish.multiply(blocks);
-		// Axis by axis, so the camera slides along walls instead of sticking to them.
-		this.tryMove(world, anchor, maxRadius, new Vec3d(delta.x, 0.0, 0.0));
-		this.tryMove(world, anchor, maxRadius, new Vec3d(0.0, delta.y, 0.0));
-		this.tryMove(world, anchor, maxRadius, new Vec3d(0.0, 0.0, delta.z));
-	}
-
-	private void tryMove(World world, Vec3d anchor, double maxRadius, Vec3d delta) {
-		if (delta.lengthSquared() == 0.0) {
-			return;
+		Vec3d next = this.pos.add(wish.multiply(blocks));
+		Vec3d fromAnchor = next.subtract(anchor);
+		if (fromAnchor.lengthSquared() > maxRadius * maxRadius) {
+			// Slide along the boundary sphere instead of stopping dead.
+			next = anchor.add(fromAnchor.normalize().multiply(maxRadius));
 		}
 
-		Vec3d next = this.pos.add(delta);
-		double nextDistance = next.squaredDistanceTo(anchor);
-		if (nextDistance > maxRadius * maxRadius && nextDistance > this.pos.squaredDistanceTo(anchor)) {
-			return;
-		}
-
-		// If the camera somehow starts inside a block, let it move so it can get out.
-		if (isFree(world, next) || !isFree(world, this.pos)) {
-			this.pos = next;
-		}
-	}
-
-	private static boolean isFree(World world, Vec3d pos) {
-		return world.isSpaceEmpty(new Box(
-			pos.x - COLLISION_HALF_SIZE, pos.y - COLLISION_HALF_SIZE, pos.z - COLLISION_HALF_SIZE,
-			pos.x + COLLISION_HALF_SIZE, pos.y + COLLISION_HALF_SIZE, pos.z + COLLISION_HALF_SIZE
-		));
+		this.pos = next;
 	}
 }

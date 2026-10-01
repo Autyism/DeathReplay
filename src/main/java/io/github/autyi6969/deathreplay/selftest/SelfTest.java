@@ -173,15 +173,19 @@ public final class SelfTest {
 		waitTicks("free view", 5);
 		screenshot("spectate_free");
 
-		run("fly straight down into the ground", c -> DeathView.getSyntheticInput().up = -1.0);
-		waitTicks("descend", 60);
-		run("check the ground stopped the camera", c -> {
+		run("fly straight down through the ground", c -> DeathView.getSyntheticInput().up = -1.0);
+		waitTicks("descend", 45);
+		run("check the camera passed through the ground", c -> {
 			DeathView.getSyntheticInput().up = 0.0;
-			double y = DeathView.getCamera().getPos().y;
-			LOGGER.info("[SelfTest] free camera stopped at y={} (ground surface is y=-60)", String.format("%.2f", y));
-			check("free camera does not pass through blocks", y > -60.0 && y < -59.0);
+			DetachedCamera camera = DeathView.getCamera();
+			// Look back up at the underside of the world from below.
+			camera.setRotation(camera.getYaw(), -60.0F);
+			double y = camera.getPos().y;
+			LOGGER.info("[SelfTest] free camera is at y={} (ground surface is y=-60, bedrock bottom is y=-64)", String.format("%.2f", y));
+			check("free camera passes through blocks", y < -64.0);
 		});
-		screenshot("spectate_free_on_ground");
+		waitTicks("view from below", 5);
+		screenshot("spectate_free_below_ground");
 
 		run("leave spectate screen", c -> c.currentScreen.close());
 		waitTicks("back on death screen", 5);
