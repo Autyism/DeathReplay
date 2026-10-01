@@ -12,6 +12,7 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonParseException;
 import io.github.autyi6969.deathreplay.DeathReplayClient;
 import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
+import io.github.autyi6969.deathreplay.replay.ReplayView;
 import net.fabricmc.loader.api.FabricLoader;
 
 /**
@@ -28,6 +29,8 @@ public final class DeathReplayConfig {
 	public int bufferSeconds = 30;
 	/** Write every death recording to disk automatically. */
 	public boolean autoSave = false;
+	/** Camera the replay starts in. */
+	public ReplayView replayView = ReplayView.THIRD_PERSON;
 	/** Death screen free camera on/off. */
 	public boolean deathFreeCamera = true;
 	/** Camera mode the death screen starts in. */
@@ -78,6 +81,10 @@ public final class DeathReplayConfig {
 	/** Repairs values a hand-edited file may have broken. */
 	private void sanitize() {
 		this.bufferSeconds = Math.max(MIN_BUFFER_SECONDS, Math.min(MAX_BUFFER_SECONDS, this.bufferSeconds));
+		if (this.replayView == null) {
+			this.replayView = ReplayView.THIRD_PERSON;
+		}
+
 		if (this.deathCameraMode == null) {
 			this.deathCameraMode = DeathCameraMode.THIRD_PERSON;
 		}

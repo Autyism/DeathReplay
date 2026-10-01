@@ -5,6 +5,9 @@
 	"client": [
 		"CameraMixin",
 		"ClientPlayNetworkHandlerMixin",
+		"ClientWorldMixin",
+		"DataTrackerAccessor",
+		"EntityRenderManagerMixin",
 		"GameOptionsMixin",
 		"GameRendererMixin",
 		"WorldMixin"

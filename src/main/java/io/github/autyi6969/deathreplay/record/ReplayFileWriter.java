@@ -78,6 +78,8 @@ public final class ReplayFileWriter {
 	private static volatile Path lastSavedFile;
 	@Nullable
 	private static volatile Recording lastSavedRecording;
+	@Nullable
+	private static volatile Recording savingRecording;
 
 	private ReplayFileWriter() {
 	}
@@ -90,6 +92,10 @@ public final class ReplayFileWriter {
 
 	public static boolean isSaved(Recording recording) {
 		return lastSavedRecording == recording;
+	}
+
+	public static boolean isSaving(Recording recording) {
+		return savingRecording == recording;
 	}
 
 	public static Path directory(MinecraftClient client) {
@@ -110,6 +116,7 @@ public final class ReplayFileWriter {
 			return CompletableFuture.completedFuture(null);
 		}
 
+		savingRecording = recording;
 		Path directory = directory(client);
 		String baseName = "death_" + FILE_TIME.format(Instant.ofEpochMilli(recording.deathTimeMillis()));
 		return CompletableFuture.supplyAsync(() -> {
@@ -128,6 +135,8 @@ public final class ReplayFileWriter {
 			} catch (IOException e) {
 				DeathReplayClient.LOGGER.error("Could not save the death recording to {}", directory, e);
 				return null;
+			} finally {
+				savingRecording = null;
 			}
 		}, Util.getIoWorkerExecutor());
 	}

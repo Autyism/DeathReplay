@@ -22,7 +22,12 @@ import io.github.autyi6969.deathreplay.record.RecordedEvent;
 import io.github.autyi6969.deathreplay.record.Recorder;
 import io.github.autyi6969.deathreplay.record.Recording;
 import io.github.autyi6969.deathreplay.record.ReplayFileWriter;
+import io.github.autyi6969.deathreplay.replay.PuppetPlayerEntity;
+import io.github.autyi6969.deathreplay.replay.Replay;
+import io.github.autyi6969.deathreplay.replay.ReplayScreen;
+import io.github.autyi6969.deathreplay.replay.ReplayView;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.minecraft.block.Blocks;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.DeathScreen;
 import net.minecraft.client.gui.screen.Screen;
@@ -30,14 +35,17 @@ import net.minecraft.client.option.Perspective;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.tutorial.TutorialStep;
 import net.minecraft.client.util.ScreenshotRecorder;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.EntityType;
 import net.minecraft.entity.EquipmentSlot;
+import net.minecraft.entity.LivingEntity;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
 import net.minecraft.nbt.NbtIo;
 import net.minecraft.nbt.NbtSizeTracker;
 import net.minecraft.registry.Registries;
 import net.minecraft.resource.DataConfiguration;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.GameMode;
@@ -147,6 +155,7 @@ public final class SelfTest {
 		waitTicks("death screen t40", 30);
 
 		recorderScript();
+		replayScript();
 		deathCameraScript();
 
 		run("respawn", c -> c.player.requestRespawn());
@@ -162,6 +171,8 @@ public final class SelfTest {
 			check("perspective setting untouched", c.options.getPerspective() == Perspective.FIRST_PERSON);
 		});
 		screenshot("after_respawn");
+
+		respawnDuringReplayScript();
 		// Screenshots are written on a background thread; give them time to land on disk.
 		waitTicks("flush screenshots", 40);
 	}
@@ -244,6 +255,184 @@ public final class SelfTest {
 				fail("could not read back " + file + ": " + e);
 			}
 		});
+	}
+
+	/**
+	 * Red line check: a respawn that arrives in the middle of a replay must end the replay at
+	 * once and leave nothing of it behind. Uses a second death.
+	 */
+	private void respawnDuringReplayScript() {
+		BlockPos testBlock = new BlockPos(3, -60, 8);
+
+		run("second death: place a block, then die", c -> {
+			command(c, "tp @s 0.5 -60 0.5 0 10");
+			command(c, "setblock 3 -60 8 minecraft:diamond_block");
+		});
+		waitTicks("alive again for a while", 60);
+		run("kill player again", c -> command(c, "kill @s"));
+		waitUntil("second death screen", c -> c.currentScreen instanceof DeathScreen, 20 * 10);
+		waitUntil("second recording frozen", () -> Recorder.getFrozen() != null, 60);
+		run("open the replay of the second death", c -> {
+			c.inGameHud.getChatHud().clear(false);
+			check("second replay opened", Replay.open(c));
+		});
+		waitTicks("second replay runs", 10);
+		run("respawn while the replay is running", c -> {
+			check("replay is running and shows the past (block not placed yet)", Replay.isActive() && c.world.getBlockState(testBlock).isAir());
+			// Exactly what the vanilla Respawn button sends; here it stands for any respawn the
+			// server decides on while a replay is open.
+			c.player.requestRespawn();
+		});
+		waitUntil("respawned", c -> c.player != null && !c.player.isDead(), 20 * 20);
+		waitTicks("after the respawn", 5);
+		run("check the replay ended with the respawn", c -> {
+			Camera camera = c.gameRenderer.getCamera();
+			double distance = camera.getCameraPos().distanceTo(c.player.getEyePos());
+			check("replay stopped by itself", !Replay.isActive());
+			check("replay screen closed by itself", c.currentScreen == null);
+			check("the recording was dropped", Recorder.getFrozen() == null);
+			check("replay is no longer offered", !Replay.isAvailable(c));
+			check("camera is back at the living player's eyes", distance < 0.5 && !camera.isThirdPerson());
+			check("world is back in the present: block is placed", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK));
+			int leftovers = 0;
+			for (Entity entity : c.world.getEntities()) {
+				if (entity.getId() < 0) {
+					leftovers++;
+				}
+			}
+
+			check("no puppet survived the respawn", leftovers == 0 && Replay.puppetCount() == 0);
+			command(c, "setblock 3 -60 8 minecraft:air");
+		});
+		waitTicks("settle", 20);
+		screenshot("after_respawn_during_replay");
+	}
+
+	/** Feature (c): the replay. Runs on the death screen, after the recorder checks. */
+	private void replayScript() {
+		BlockPos testBlock = new BlockPos(3, -60, 8);
+
+		run("open replay", c -> {
+			// Chat lines would cover the lower half of every screenshot.
+			c.inGameHud.getChatHud().clear(false);
+			check("replay is available on the death screen", Replay.isAvailable(c));
+			check("replay opened", Replay.open(c));
+		});
+		waitTicks("replay starts", 2);
+		run("check replay start", c -> {
+			check("replay screen is open", c.currentScreen instanceof ReplayScreen);
+			check("replay is active", Replay.isActive());
+			check("replay starts in third person", Replay.getView() == ReplayView.THIRD_PERSON);
+			LOGGER.info("[SelfTest] replay: {} puppets at tick {}", Replay.puppetCount(), Replay.getTick());
+			check("puppets were created", Replay.puppetCount() >= 3);
+			check("the player has a puppet", Replay.getPlayerPuppet() instanceof PuppetPlayerEntity);
+			check("world was rewound: test block not placed yet", c.world.getBlockState(testBlock).isAir());
+			int realVisible = 0;
+			int puppets = 0;
+			for (Entity entity : c.world.getEntities()) {
+				if (Replay.isPuppet(entity)) {
+					puppets++;
+				} else if (!Replay.hidesEntity(entity)) {
+					realVisible++;
+				}
+			}
+
+			check("puppets are in the world", puppets == Replay.puppetCount());
+			check("real entities are hidden during the replay", realVisible == 0);
+		});
+
+		Vec3d[] puppetStart = new Vec3d[1];
+		waitUntil("replay tick 22 (walk has begun)", () -> Replay.getTick() >= 22, 100);
+		run("remember where the player puppet is", c -> puppetStart[0] = Replay.getPlayerPuppet().getEntityPos());
+		waitUntil("replay tick 36 (mid walk)", () -> Replay.getTick() >= 36, 100);
+		run("check the player puppet walks", c -> {
+			double moved = Replay.getPlayerPuppet().getEntityPos().distanceTo(puppetStart[0]);
+			LOGGER.info("[SelfTest] player puppet moved {} blocks in 14 ticks", String.format("%.2f", moved));
+			check("the player puppet walks", moved > 1.5);
+		});
+		screenshot("replay_third_person_walking");
+
+		waitUntil("replay tick 70 (block placed)", () -> Replay.getTick() >= 70, 100);
+		run("check the block change is replayed", c ->
+			check("test block is there during the replay", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK)));
+		screenshot("replay_third_person_block_placed");
+
+		run("first person", c -> Replay.setView(ReplayView.FIRST_PERSON));
+		waitTicks("first person", 3);
+		run("check first person camera", c -> {
+			Entity puppet = Replay.getPlayerPuppet();
+			Vec3d eyes = puppet.getEntityPos().add(0.0, puppet.getStandingEyeHeight(), 0.0);
+			double distance = c.gameRenderer.getCamera().getCameraPos().distanceTo(eyes);
+			LOGGER.info("[SelfTest] first person: camera is {} blocks from the puppet's eyes", String.format("%.2f", distance));
+			check("first person camera sits in the puppet's eyes", distance < 0.3);
+			check("the player's own puppet is hidden in first person", Replay.hidesEntity(puppet));
+		});
+		screenshot("replay_first_person");
+
+		waitUntil("replay tick 96 (block removed)", () -> Replay.getTick() >= 96, 100);
+		run("check the block removal is replayed", c ->
+			check("test block is gone again during the replay", c.world.getBlockState(testBlock).isAir()));
+
+		run("free view, fly up and backwards", c -> {
+			Replay.setView(ReplayView.FREE);
+			Replay.getSyntheticInput().up = 1.0;
+			Replay.getSyntheticInput().forward = -1.0;
+		});
+		waitTicks("free flight", 16);
+		run("stop flying and look down", c -> {
+			Replay.getSyntheticInput().up = 0.0;
+			Replay.getSyntheticInput().forward = 0.0;
+			DetachedCamera camera = Replay.getCamera();
+			camera.setRotation(camera.getYaw(), 40.0F);
+			double distance = camera.getPos().distanceTo(Replay.getPlayerPuppet().getEntityPos());
+			LOGGER.info("[SelfTest] replay free camera is {} blocks from the player puppet", String.format("%.2f", distance));
+			check("free view flew away from the player", distance > 5.0);
+		});
+		waitTicks("free view", 3);
+		screenshot("replay_free");
+
+		waitUntil("replay reaches the end", () -> Replay.isAtEnd() && !Replay.isPlaying(), 100);
+		run("check the end of the replay", c -> {
+			Entity puppet = Replay.getPlayerPuppet();
+			check("the player puppet is dead at the end", puppet instanceof LivingEntity living && living.isDead() && living.deathTime > 0);
+			Replay.setView(ReplayView.THIRD_PERSON);
+		});
+		waitTicks("death view", 3);
+		screenshot("replay_end_death");
+
+		run("seek back and pause", c -> {
+			Replay.seek(40);
+			Replay.setPlaying(false);
+		});
+		waitTicks("paused", 10);
+		run("check seek and pause", c -> {
+			check("seek jumped to the requested tick and pause holds it", Replay.getTick() == 40 && !Replay.isPlaying());
+			check("puppets exist after seeking", Replay.puppetCount() >= 3);
+			check("world was rewound by the seek", c.world.getBlockState(testBlock).isAir());
+		});
+		screenshot("replay_paused_after_seek");
+
+		run("seek into the block window", c -> Replay.seek(66));
+		waitTicks("after seek", 2);
+		run("check seeking forward applies block changes", c ->
+			check("test block is there after seeking forward", c.world.getBlockState(testBlock).isOf(Blocks.DIAMOND_BLOCK)));
+
+		run("close the replay", c -> c.currentScreen.close());
+		waitTicks("replay closed", 3);
+		run("check everything is put back", c -> {
+			check("replay is over", !Replay.isActive());
+			check("death screen is back", c.currentScreen instanceof DeathScreen);
+			check("world is back in the present: test block is gone", c.world.getBlockState(testBlock).isAir());
+			int leftovers = 0;
+			for (Entity entity : c.world.getEntities()) {
+				if (entity.getId() < 0) {
+					leftovers++;
+				}
+			}
+
+			check("no puppet is left in the world", leftovers == 0 && Replay.puppetCount() == 0);
+		});
+		screenshot("death_screen_after_replay");
 	}
 
 	/** Feature (a): death screen free camera. Runs while the death screen is open. */
