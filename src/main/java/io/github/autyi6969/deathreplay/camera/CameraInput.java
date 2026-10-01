@@ -15,6 +15,12 @@ import org.lwjgl.glfw.GLFW;
  * Purely local input: nothing here is sent to the server.
  */
 public final class CameraInput {
+	/**
+	 * Set by the self-test: a person using the computer while it runs would otherwise steer
+	 * the camera with their real mouse and keys.
+	 */
+	public static boolean ignoreRealInput;
+
 	private double lastMouseX;
 	private double lastMouseY;
 	private boolean hasLastMouse;
@@ -34,7 +40,7 @@ public final class CameraInput {
 
 	/** Hides the cursor and lets it travel without limits, for mouse-look inside a screen. */
 	public void grabMouse(MinecraftClient client) {
-		if (!this.grabbed && client.isWindowFocused()) {
+		if (!this.grabbed && client.isWindowFocused() && !ignoreRealInput) {
 			GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
 			this.grabbed = true;
 			this.hasLastMouse = false;
@@ -63,6 +69,13 @@ public final class CameraInput {
 		state.sprint = isHeld(client, options.sprintKey);
 		state.yawDelta = 0.0F;
 		state.pitchDelta = 0.0F;
+
+		if (ignoreRealInput) {
+			state.forward = state.strafe = state.up = 0.0;
+			state.sprint = false;
+			this.hasLastMouse = false;
+			return;
+		}
 
 		if (!this.grabbed || !client.isWindowFocused()) {
 			this.hasLastMouse = false;

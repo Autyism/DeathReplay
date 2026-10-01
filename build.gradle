@@ -13,6 +13,11 @@ base {
 repositories {
 	maven { url "https://maven.shedaniel.me/" }
 	maven { url "https://maven.terraformersmc.com/releases/" }
+	// Other mods, for compatibility testing in the dev client only (see with_sodium below).
+	exclusiveContent {
+		forRepository { maven { url "https://api.modrinth.com/maven" } }
+		filter { includeGroup "maven.modrinth" }
+	}
 }
 
 loom {
@@ -39,6 +44,15 @@ dependencies {
 	// Mod Menu is optional for players: compiled against, and present in the dev client only.
 	modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 	modLocalRuntime "com.terraformersmc:modmenu:${project.modmenu_version}"
+
+	// I play with Sodium (and Iris), which replace the chunk renderer. Add them to the
+	// dev client with -Pwith_sodium=true / -Pwith_iris=true; never a dependency of the mod itself.
+	if (project.hasProperty("with_sodium") || project.hasProperty("with_iris")) {
+		modLocalRuntime "maven.modrinth:sodium:${project.sodium_version}"
+	}
+	if (project.hasProperty("with_iris")) {
+		modLocalRuntime "maven.modrinth:iris:${project.iris_version}"
+	}
 }
 
 processResources {

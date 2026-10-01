@@ -7,6 +7,7 @@
 		"BiomeAccessAccessor",
 		"CameraMixin",
 		"ClientConnectionAuditMixin",
+		"ClientPlayNetworkHandlerAccessor",
 		"ClientPlayNetworkHandlerMixin",
 		"DataTrackerAccessor",
 		"EntityRenderManagerMixin",
@@ -14,7 +15,8 @@
 		"GameRendererMixin",
 		"InGameHudMixin",
 		"LightmapTextureManagerMixin",
-		"WorldMixin"
+		"WorldMixin",
+		"WorldRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1

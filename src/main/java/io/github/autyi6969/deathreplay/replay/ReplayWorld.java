@@ -1,8 +1,6 @@
 package io.github.autyi6969.deathreplay.replay;
 
-import java.util.BitSet;
-import java.util.Iterator;
-
+import io.github.autyi6969.deathreplay.mixin.ClientPlayNetworkHandlerAccessor;
 import io.github.autyi6969.deathreplay.record.Recording;
 import io.github.autyi6969.deathreplay.record.WorldSnapshot;
 import net.minecraft.client.MinecraftClient;
@@ -10,12 +8,8 @@ import net.minecraft.client.network.ClientPlayNetworkHandler;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.network.packet.s2c.play.ChunkData;
 import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.LightData;
-import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ChunkSectionPos;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.LightType;
-import net.minecraft.world.chunk.ChunkNibbleArray;
 import net.minecraft.world.chunk.ChunkSection;
 import net.minecraft.world.chunk.WorldChunk;
 import net.minecraft.world.chunk.light.LightingProvider;
@@ -61,39 +55,38 @@ final class ReplayWorld {
 		world.setRainGradient(snapshot.rainGradient());
 		world.setThunderGradient(snapshot.thunderGradient());
 
-		// The same steps the client takes for a chunk packet from the server.
-		for (ChunkDataS2CPacket packet : snapshot.chunks()) {
-			int x = packet.getChunkX();
-			int z = packet.getChunkZ();
-			ChunkData data = packet.getChunkData();
-			WorldChunk chunk = world.getChunkManager().loadChunkFromPacket(x, z, data.getSectionsDataBuf(), data.getHeightmap(), data.getBlockEntities(x, z));
-			if (chunk == null) {
-				continue;
-			}
-
+		// The same steps the client takes for a chunk packet from the server, through the same
+		// methods. That matters: renderer mods such as Sodium keep their own list of chunks that
+		// are ready to draw, and fill it from hooks inside exactly these methods. The light
+		// method works on the handler's world field, so that field points at the stage for the
+		// few milliseconds this takes. Everything here runs on the render thread, where packets
+		// are handled too, so no packet can be applied to the wrong world in between.
+		ClientPlayNetworkHandlerAccessor access = (ClientPlayNetworkHandlerAccessor) handler;
+		ClientWorld realWorld = access.deathreplay$getWorld();
+		access.deathreplay$setWorld(world);
+		try {
 			LightingProvider light = world.getChunkManager().getLightingProvider();
-			LightData lightData = packet.getLightData();
-			readLight(light, x, z, LightType.SKY, lightData.getInitedSky(), lightData.getUninitedSky(), lightData.getSkyNibbles().iterator());
-			readLight(light, x, z, LightType.BLOCK, lightData.getInitedBlock(), lightData.getUninitedBlock(), lightData.getBlockNibbles().iterator());
-			light.setColumnEnabled(new ChunkPos(x, z), true);
+			for (ChunkDataS2CPacket packet : snapshot.chunks()) {
+				int x = packet.getChunkX();
+				int z = packet.getChunkZ();
+				ChunkData data = packet.getChunkData();
+				WorldChunk chunk = world.getChunkManager().loadChunkFromPacket(x, z, data.getSectionsDataBuf(), data.getHeightmap(), data.getBlockEntities(x, z));
+				if (chunk == null) {
+					continue;
+				}
 
-			ChunkSection[] sections = chunk.getSectionArray();
-			for (int i = 0; i < sections.length; i++) {
-				light.setSectionStatus(ChunkSectionPos.from(chunk.getPos(), world.sectionIndexToCoord(i)), sections[i].isEmpty());
+				access.deathreplay$readLightData(x, z, packet.getLightData(), false);
+				ChunkSection[] sections = chunk.getSectionArray();
+				for (int i = 0; i < sections.length; i++) {
+					light.setSectionStatus(ChunkSectionPos.from(chunk.getPos(), world.sectionIndexToCoord(i)), sections[i].isEmpty());
+				}
 			}
+
+			light.doLightUpdates();
+		} finally {
+			access.deathreplay$setWorld(realWorld);
 		}
 
-		world.getChunkManager().getLightingProvider().doLightUpdates();
 		return world;
-	}
-
-	private static void readLight(LightingProvider light, int chunkX, int chunkZ, LightType type, BitSet inited, BitSet uninited, Iterator<byte[]> nibbles) {
-		for (int i = 0; i < light.getHeight(); i++) {
-			boolean hasData = inited.get(i);
-			if (hasData || uninited.get(i)) {
-				ChunkSectionPos pos = ChunkSectionPos.from(chunkX, light.getBottomY() + i, chunkZ);
-				light.enqueueSectionData(type, pos, hasData ? new ChunkNibbleArray(nibbles.next().clone()) : new ChunkNibbleArray());
-			}
-		}
 	}
 }

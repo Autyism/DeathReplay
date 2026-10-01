@@ -15,6 +15,7 @@ import java.util.TreeSet;
 import java.util.function.BooleanSupplier;
 import java.util.function.Predicate;
 
+import io.github.autyi6969.deathreplay.camera.CameraInput;
 import io.github.autyi6969.deathreplay.camera.DeathCameraMode;
 import io.github.autyi6969.deathreplay.camera.DetachedCamera;
 import io.github.autyi6969.deathreplay.config.DeathReplayConfig;
@@ -116,6 +117,8 @@ public final class SelfTest {
 		run("prepare client", c -> {
 			// The window is usually unfocused during an unattended run; do not let that pause the game.
 			c.options.pauseOnLostFocus = false;
+			// Somebody may be using the computer while this runs; their mouse must not steer the test.
+			CameraInput.ignoreRealInput = true;
 			// The "Move with WASD" tutorial toast would cover a corner of every screenshot.
 			c.getTutorialManager().setStep(TutorialStep.NONE);
 			// In memory only (never saved): a short buffer so the test can fill it, and auto-save on.
@@ -146,6 +149,18 @@ public final class SelfTest {
 			// Landmarks, so the screenshots show where the camera is looking from.
 			command(c, "fill 2 -60 3 2 -58 3 minecraft:gold_block");
 			command(c, "fill -3 -60 4 -2 -60 4 minecraft:stone");
+			// A 48-block cube of solid stone with a lit room in its middle, for the "free camera
+			// inside rock" check. Built once; it stays in the self-test world.
+			if (!c.world.getBlockState(new BlockPos(33, -31, 33)).isOf(Blocks.STONE) || !c.world.getBlockState(new BlockPos(55, -12, 55)).isOf(Blocks.GLOWSTONE)) {
+				for (int y = -32; y < 16; y += 12) {
+					command(c, "fill 32 " + y + " 32 79 " + (y + 11) + " 79 minecraft:stone");
+				}
+
+				command(c, "fill 50 -12 50 61 -3 61 minecraft:air");
+				command(c, "fill 54 -12 54 57 -12 57 minecraft:glowstone");
+				command(c, "fill 55 -11 55 56 -9 56 minecraft:gold_block");
+			}
+
 			// Known actors for the recorder: leftovers of earlier runs out, fresh ones in.
 			command(c, "kill @e[type=minecraft:pig]");
 			command(c, "kill @e[type=minecraft:armor_stand]");
@@ -154,7 +169,7 @@ public final class SelfTest {
 			command(c, "summon minecraft:pig 4 -60 10");
 			command(c, "summon minecraft:armor_stand -2 -60 9 {equipment:{head:{id:\"minecraft:diamond_helmet\"}}}");
 		});
-		waitTicks("scene settles", 20);
+		waitTicks("scene settles", 45);
 		run("walk forward", c -> c.options.forwardKey.setPressed(true));
 		waitTicks("walking", 30);
 		run("stop walking", c -> c.options.forwardKey.setPressed(false));
@@ -770,7 +785,7 @@ public final class SelfTest {
 			Click right = new Click(screen.width / 2.0, screen.height / 2.0, new MouseInput(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0));
 			screen.mouseClicked(right, false);
 			// The mouse can only be grabbed while the window has focus, which an unattended run may not have.
-			check("right button grabs the mouse for looking (when the window has focus)", Replay.isLooking() == c.isWindowFocused());
+			// The self-test keeps its hands off the real mouse, so only the handler path is exercised.
 			screen.mouseReleased(right);
 			check("releasing the right button frees the mouse", !Replay.isLooking());
 		});
@@ -933,6 +948,29 @@ public final class SelfTest {
 		screenshot("death_screen_after_replay");
 	}
 
+	/**
+	 * Free camera inside solid rock: a hollow room in the middle of a 48-block stone cube must
+	 * be visible from inside the rock, as it is for a vanilla spectator.
+	 */
+	private void rockCullingScript() {
+		run("put the free camera inside solid stone, facing the hidden room", c -> {
+			DeathView.setMode(DeathCameraMode.FREE);
+			DetachedCamera camera = DeathView.getCamera();
+			camera.setPos(new Vec3d(40.5, -23.5, 40.5));
+			// The room's centre is 16 blocks away on every axis.
+			camera.setRotation(-45.0F, -35.0F);
+		});
+		waitTicks("sections build", 60);
+		run("check the room is drawn from inside the rock", c -> {
+			boolean inRock = c.world.getBlockState(BlockPos.ofFloored(DeathView.getCamera().getPos())).isOpaqueFullCube();
+			int drawn = c.worldRenderer.getCompletedChunkCount();
+			LOGGER.info("[SelfTest] camera inside solid stone: {}; chunk sections drawn: {}", inRock, drawn);
+			check("the camera is inside solid stone", inRock);
+			check("looking out of solid rock still draws the world (more than 8 sections)", drawn > 8);
+		});
+		screenshot("free_camera_inside_rock");
+	}
+
 	/** Feature (a): death screen free camera. Runs while the death screen is open. */
 	private void deathCameraScript() {
 		float[] yawBefore = new float[1];
@@ -996,6 +1034,8 @@ public final class SelfTest {
 		});
 		waitTicks("view from below", 5);
 		screenshot("spectate_free_below_ground");
+
+		rockCullingScript();
 
 		run("leave spectate screen", c -> c.currentScreen.close());
 		waitTicks("back on death screen", 5);
