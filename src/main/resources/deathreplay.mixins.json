@@ -6,6 +6,7 @@
 	"client": [
 		"BiomeAccessAccessor",
 		"CameraMixin",
+		"ClientChunkManagerMixin",
 		"ClientConnectionAuditMixin",
 		"ClientPlayNetworkHandlerAccessor",
 		"ClientPlayNetworkHandlerMixin",

@@ -263,6 +263,7 @@ public final class SelfTest {
 			check("deleting removes the marker and its locator bar dot", Waypoints.current(c).isEmpty() && !c.getNetworkHandler().getWaypointHandler().hasWaypoint()));
 
 		respawnDuringReplayScript();
+		farTravelScript();
 		combatScript();
 		savedFileScript();
 		settingsScript();
@@ -536,6 +537,70 @@ public final class SelfTest {
 			}
 		});
 		waitTicks("back in the game", 3);
+	}
+
+	/**
+	 * The replay starts where the player was at the start of the recording, which can be far
+	 * from where the player died. The terrain there must be in the replay too.
+	 */
+	private void farTravelScript() {
+		BlockPos farGround = new BlockPos(300, -61, 300);
+
+		run("go 420 blocks away", c -> command(c, "tp @s 300.5 -60 300.5 0 10"));
+		waitTicks("stand far away", 60);
+		run("come back", c -> command(c, "tp @s 0.5 -60 0.5 0 10"));
+		waitTicks("stand at the origin", 50);
+		run("die after travelling", c -> {
+			check("the far chunks are no longer loaded on the client", c.world.getChunkManager().getWorldChunk(18, 18, false) == null);
+			command(c, "kill @s");
+		});
+		waitUntil("death screen after travelling", c -> c.currentScreen instanceof DeathScreen, 20 * 10);
+		waitUntil("recording after travelling frozen", () -> Recorder.getFrozen() != null, 60);
+		run("open the replay at a moment when the player was far away", c -> {
+			c.inGameHud.getChatHud().clear(false);
+			Recording recording = Recorder.getFrozen();
+			int farTick = -1;
+			for (int i = 0; i < recording.tickCount(); i++) {
+				EntitySample sample = recording.playerAt(i);
+				if (sample != null && sample.x > 250.0) {
+					farTick = i + 10;
+					break;
+				}
+			}
+
+			LOGGER.info("[SelfTest] recording after travelling: {} ticks, {} chunks of terrain, player far away from tick {}",
+				recording.tickCount(), recording.snapshot().chunks().size(), farTick);
+			check("the recording contains the far away part", farTick >= 0);
+			check("replay opened", Replay.open(c));
+			Replay.seek(Math.max(0, farTick));
+			Replay.setPlaying(false);
+		});
+		waitTicks("far scene builds", 40);
+		run("check the replay has terrain where the player was", c -> {
+			Entity puppet = Replay.getPlayerPuppet();
+			check("the player puppet is at the far place", puppet != null && puppet.getX() > 250.0);
+			check("the terrain of the far place is in the replay", Replay.getStage().getBlockState(farGround).isOf(Blocks.GRASS_BLOCK));
+			int drawn = c.worldRenderer.getCompletedChunkCount();
+			LOGGER.info("[SelfTest] far from the death: {} chunk sections drawn", drawn);
+			check("terrain is drawn there", drawn > 0);
+			int covered = 0;
+			for (int x = 18 - 4; x <= 18 + 4; x++) {
+				for (int z = 18 - 4; z <= 18 + 4; z++) {
+					if (Replay.getStage().getChunkManager().getWorldChunk(x, z, false) != null) {
+						covered++;
+					}
+				}
+			}
+
+			LOGGER.info("[SelfTest] far from the death: {} of the 81 chunks around the player are in the replay", covered);
+			check("the surroundings of the far place are in the replay, not just a corner", covered >= 70);
+		});
+		screenshot("replay_start_far_from_death");
+		run("close the replay", c -> c.currentScreen.close());
+		waitTicks("closed", 3);
+		run("respawn after travelling", c -> c.player.requestRespawn());
+		waitUntil("respawned after travelling", c -> c.player != null && !c.player.isDead() && !(c.currentScreen instanceof DeathScreen), 20 * 20);
+		waitTicks("settle", 10);
 	}
 
 	/** Saved files: what was written can be read back, listed and played. Runs while alive. */

@@ -11,6 +11,10 @@ import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
 import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
+import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.network.ClientPlayerEntity;
@@ -21,9 +25,12 @@ import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.data.DataTracker;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
 import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
+import net.minecraft.world.chunk.WorldChunk;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -36,7 +43,7 @@ import org.jetbrains.annotations.Nullable;
  *
  * <p>When the player dies the buffer stops rolling: no older frame is dropped any more, a
  * short tail is appended (the server keeps sending the scene for one more second, which is
- * the death animation), a copy of the surrounding terrain is taken, and the result is frozen
+ * the death animation), a copy of the terrain along the player's route is taken, and the result is frozen
  * into a {@link Recording}. It stays available, also after the respawn, until the next death
  * replaces it or the player leaves the server.
  */
@@ -71,6 +78,19 @@ public final class Recorder {
 	/** The world {@link #SPAWN_PACKETS} belongs to; entity ids mean nothing across worlds. */
 	@Nullable
 	private static ClientWorld spawnPacketWorld;
+
+	/**
+	 * Chunks on the player's recent route that the client has since unloaded, captured at the
+	 * moment of unloading, by {@link ChunkPos#toLong()}. Without them a replay that starts far
+	 * from the death (elytra, teleport, a long sprint with a short render distance) would
+	 * start in empty space.
+	 */
+	private static final Long2ObjectMap<UnloadedChunk> UNLOADED_CHUNKS = new Long2ObjectOpenHashMap<>();
+	/** Every how many frames the player's position is looked at when working out the route. */
+	private static final int ROUTE_STEP = 10;
+
+	private record UnloadedChunk(ChunkDataS2CPacket packet, long tick) {
+	}
 
 	private static State state = State.IDLE;
 	@Nullable
@@ -174,6 +194,9 @@ public final class Recorder {
 		tickCounter++;
 		if (tickCounter % 200L == 0L) {
 			pruneSpawnPackets(currentWorld);
+			// An unloaded chunk matters only while the frames recorded near it are still in the buffer.
+			long oldest = tickCounter - DeathReplayConfig.get().bufferSeconds * Recording.TICKS_PER_SECOND - 200L;
+			UNLOADED_CHUNKS.values().removeIf(chunk -> chunk.tick() < oldest);
 		}
 
 		switch (state) {
@@ -211,6 +234,7 @@ public final class Recorder {
 		BUFFER.clear();
 		PENDING_EVENTS.clear();
 		APPEARANCES.clear();
+		UNLOADED_CHUNKS.clear();
 		state = State.IDLE;
 		world = null;
 		player = null;
@@ -227,8 +251,11 @@ public final class Recorder {
 
 		EntitySample atDeath = frames.get(deathFrame).find(currentPlayer.getId());
 		long snapshotStart = System.nanoTime();
-		int radius = Math.min(WorldSnapshot.MAX_RADIUS, client.options.getClampedViewDistance());
-		WorldSnapshot snapshot = WorldSnapshot.capture(currentWorld, currentPlayer.getChunkPos(), radius);
+		Long2ObjectMap<ChunkDataS2CPacket> unloaded = new Long2ObjectOpenHashMap<>();
+		UNLOADED_CHUNKS.forEach((pos, chunk) -> unloaded.put((long) pos, chunk.packet()));
+		WorldSnapshot snapshot = WorldSnapshot.capture(currentWorld, currentPlayer.getChunkPos(), route(frames, currentPlayer.getId()), unloaded,
+			client.options.getClampedViewDistance());
+		UNLOADED_CHUNKS.clear();
 		double snapshotMillis = (System.nanoTime() - snapshotStart) / 1.0e6;
 		frozen = new Recording(
 			frames,
@@ -248,6 +275,89 @@ public final class Recorder {
 
 		if (DeathReplayConfig.get().autoSave) {
 			ReplayFileWriter.saveAsync(client, frozen, currentWorld.getRegistryManager());
+		}
+	}
+
+	// ---------------------------------------------------------------- route and terrain
+
+	/** The chunks the player was in over {@code frames}, without repeats. */
+	private static List<ChunkPos> route(Iterable<Frame> frames, int playerId) {
+		List<ChunkPos> route = new ArrayList<>();
+		int index = 0;
+		for (Frame frame : frames) {
+			if (index++ % ROUTE_STEP != 0) {
+				continue;
+			}
+
+			EntitySample sample = frame.find(playerId);
+			if (sample != null) {
+				ChunkPos pos = new ChunkPos(BlockPos.ofFloored(sample.x, sample.y, sample.z));
+				if (route.isEmpty() || !route.getLast().equals(pos)) {
+					route.add(pos);
+				}
+			}
+		}
+
+		return route;
+	}
+
+	/**
+	 * Called just before the client unloads a chunk. If the player passed near it within the
+	 * buffered time, its terrain is kept for the replay.
+	 */
+	public static void onChunkUnload(ClientWorld unloadingWorld, ChunkPos pos) {
+		if (state != State.RECORDING || unloadingWorld != world || player == null || BUFFER.isEmpty()) {
+			return;
+		}
+
+		if (!WorldSnapshot.isNearRoute(pos, route(BUFFER, player.getId()))) {
+			return;
+		}
+
+		WorldChunk chunk = unloadingWorld.getChunkManager().getWorldChunk(pos.x, pos.z, false);
+		if (chunk != null) {
+			UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ChunkDataS2CPacket(chunk, unloadingWorld.getLightingProvider(), null, null), tickCounter));
+		}
+	}
+
+	/**
+	 * Called just before the client moves the centre of its chunk storage (the player crossed
+	 * a chunk border, or was teleported). Returns the loaded chunks near the recorded route.
+	 *
+	 * <p>After a long jump the storage no longer reaches the old chunks at all, and the unload
+	 * packets that follow find nothing to unload. {@link #afterChunkCenterChange} keeps the ones
+	 * that dropped out of reach.
+	 */
+	public static List<WorldChunk> beforeChunkCenterChange(ClientWorld movingWorld) {
+		if (state != State.RECORDING || movingWorld != world || player == null || BUFFER.isEmpty()) {
+			return List.of();
+		}
+
+		List<WorldChunk> nearRoute = new ArrayList<>();
+		LongSet seen = new LongOpenHashSet();
+		for (ChunkPos onRoute : route(BUFFER, player.getId())) {
+			for (int x = onRoute.x - WorldSnapshot.PATH_RADIUS; x <= onRoute.x + WorldSnapshot.PATH_RADIUS; x++) {
+				for (int z = onRoute.z - WorldSnapshot.PATH_RADIUS; z <= onRoute.z + WorldSnapshot.PATH_RADIUS; z++) {
+					if (seen.add(ChunkPos.toLong(x, z))) {
+						WorldChunk chunk = movingWorld.getChunkManager().getWorldChunk(x, z, false);
+						if (chunk != null) {
+							nearRoute.add(chunk);
+						}
+					}
+				}
+			}
+		}
+
+		return nearRoute;
+	}
+
+	/** Keeps the chunks of {@code nearRoute} that the storage can no longer reach. */
+	public static void afterChunkCenterChange(ClientWorld movedWorld, List<WorldChunk> nearRoute) {
+		for (WorldChunk chunk : nearRoute) {
+			ChunkPos pos = chunk.getPos();
+			if (movedWorld.getChunkManager().getWorldChunk(pos.x, pos.z, false) != chunk) {
+				UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ChunkDataS2CPacket(chunk, movedWorld.getLightingProvider(), null, null), tickCounter));
+			}
 		}
 	}
 
