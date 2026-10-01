@@ -1,3 +1,13 @@
 {
-	"deathreplay.name": "死亡回放"
+	"deathreplay.name": "死亡回放",
+	"deathreplay.camera.third_person": "第三人称",
+	"deathreplay.camera.orbit": "环绕",
+	"deathreplay.camera.free": "自由视角",
+	"deathreplay.button.free_camera": "观察战场",
+	"deathreplay.spectate.title": "死亡视角",
+	"deathreplay.spectate.mode": "视角：%s",
+	"deathreplay.spectate.hint": "[%s] 切换视角   [Esc] 返回死亡界面",
+	"deathreplay.spectate.hint.orbit": "鼠标：转动   滚轮：远近",
+	"deathreplay.spectate.hint.free": "鼠标：转向   移动键：飞行   跳跃 / 潜行：升 / 降",
+	"deathreplay.spectate.hint.free2": "疾跑：加速   滚轮：速度"
 }

@@ -1,3 +1,13 @@
 {
-	"deathreplay.name": "Death Replay"
+	"deathreplay.name": "Death Replay",
+	"deathreplay.camera.third_person": "Third Person",
+	"deathreplay.camera.orbit": "Orbit",
+	"deathreplay.camera.free": "Free Camera",
+	"deathreplay.button.free_camera": "Look Around",
+	"deathreplay.spectate.title": "Death Camera",
+	"deathreplay.spectate.mode": "View: %s",
+	"deathreplay.spectate.hint": "[%s] switch view   [Esc] back to death screen",
+	"deathreplay.spectate.hint.orbit": "Mouse: turn   Scroll: distance",
+	"deathreplay.spectate.hint.free": "Mouse: look   Move keys: fly   Jump / Sneak: up / down",
+	"deathreplay.spectate.hint.free2": "Sprint: faster   Scroll: speed"
 }

@@ -3,6 +3,9 @@
 	"package": "io.github.autyi6969.deathreplay.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"client": [
+		"CameraMixin",
+		"GameOptionsMixin",
+		"GameRendererMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
