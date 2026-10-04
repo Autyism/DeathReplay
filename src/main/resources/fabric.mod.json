@@ -1,22 +1,26 @@
 {
 	"schemaVersion": 1,
-	"id": "deathreplay",
+	"id": "autyism-deathreplay",
 	"version": "${version}",
 	"name": "Death Replay",
-	"description": "Client-side death replay: rewatch the last 30 seconds before you died, and look around freely on the death screen.",
+	"description": "Rewatch the last seconds before you died (30 by default) in third person, first person or a free camera, save replays to files, and look around freely on the death screen. Client-side only: it records what your game already receives and sends nothing to the server.",
 	"authors": [
-		"Autyi6969"
+		"Autyism"
 	],
-	"contact": {},
-	"license": "GPL-3.0",
+	"contact": {
+		"homepage": "https://github.com/Autyism/DeathReplay",
+		"sources": "https://github.com/Autyism/DeathReplay",
+		"issues": "https://github.com/Autyism/DeathReplay/issues"
+	},
+	"license": "GPL-3.0-only",
 	"icon": "assets/deathreplay/icon.png",
 	"environment": "client",
 	"entrypoints": {
 		"client": [
-			"io.github.autyi6969.deathreplay.DeathReplayClient"
+			"io.github.autyism.deathreplay.DeathReplayClient"
 		],
 		"modmenu": [
-			"io.github.autyi6969.deathreplay.config.ModMenuIntegration"
+			"io.github.autyism.deathreplay.config.ModMenuIntegration"
 		]
 	},
 	"mixins": [
@@ -30,5 +34,8 @@
 	},
 	"suggests": {
 		"modmenu": "*"
+	},
+	"breaks": {
+		"deathreplay": "*"
 	}
 }

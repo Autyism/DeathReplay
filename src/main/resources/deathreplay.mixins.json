@@ -1,8 +1,8 @@
 {
 	"required": true,
-	"package": "io.github.autyi6969.deathreplay.mixin",
+	"package": "io.github.autyism.deathreplay.mixin",
 	"compatibilityLevel": "JAVA_21",
-	"plugin": "io.github.autyi6969.deathreplay.mixin.DeathReplayMixinPlugin",
+	"plugin": "io.github.autyism.deathreplay.mixin.DeathReplayMixinPlugin",
 	"client": [
 		"BiomeAccessAccessor",
 		"CameraMixin",
