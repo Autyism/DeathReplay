@@ -1,0 +1,35 @@
+# Changelog
+
+## 0.1.0 — 2026-10-04
+
+First public release.
+
+- Rolling in-memory recording of the last 30 seconds before death (adjustable from 5 to 120 seconds). Client-side only: it records what the server already sends and sends nothing back.
+- Replays show you, nearby mobs, players, items and projectiles (within 64 blocks), block changes, particles, sounds, explosions and hurt effects.
+- Watch on the death screen (Replay button) or after respawning (F6), in Third Person, First Person or Free Camera.
+- Play / pause, restart, 2-second jumps and a draggable timeline with the moment of death marked.
+- Replays play in a copy of the terrain along your whole route; the real world is never changed.
+- Save replays to files (button or Auto-Save Replays) and watch them later from the Saved Replays list, even after a restart.
+- Death screen camera: the view moves off your body, and Look Around offers Third Person, Orbit and Free Camera (through walls, no distance limit).
+- A frozen scene on the death screen once the server stops sending the entities around you.
+- Esc on the death screen opens the game menu without respawning and returns to the same death screen.
+- Client-side markers dropped with a right click, shown as on-screen labels and on the locator bar, kept per world.
+- Deaths followed by an immediate respawn ("Respawn immediately" game rule) are recorded too; watch them with F6.
+- Settings screen (via Mod Menu or a key you bind); English and Simplified Chinese.
+
+### 中文
+
+首个公开版本。
+
+- 在内存中滚动记录死前最后 30 秒（可在 5～120 秒之间调整）。纯客户端：只记录服务器本来就发来的内容，不向服务器发送任何东西。
+- 回放内容包括你自己、周围 64 格内的怪物、玩家、掉落物和弹射物，以及方块变化、粒子、声音、爆炸和受伤效果。
+- 可以在死亡界面（"回放"按钮）或重生后（F6）观看，支持第三人称、第一人称和自由视角。
+- 播放 / 暂停、从头播放、前后跳 2 秒，以及可拖动、标出死亡时刻的进度条。
+- 回放在一份覆盖整条路线的地形副本中播放，真实世界不会被改动。
+- 可以把回放保存成文件（按钮或"自动保存回放"），之后在"已保存的回放"列表里观看，重启游戏后也能看。
+- 死亡界面自由视角：镜头离开尸体，"观察战场"提供第三人称、环绕和自由视角（可穿墙，无距离限制）。
+- 服务器不再发送周围实体后，死亡界面会显示定格的现场。
+- 在死亡界面按 Esc 可以不重生直接打开游戏菜单，关闭后回到原来的死亡界面。
+- 纯客户端的标记：右键放置，以屏幕标签和定位栏显示，按世界分开保存。
+- 开启"立即重生"规则时的死亡也会录下来，重生后按 F6 观看。
+- 设置界面（通过 Mod Menu 或自定义按键打开）；支持英文和简体中文。

@@ -75,5 +75,8 @@
 	"deathreplay.waypoints.need_world": "Join a world to see its markers.",
 	"deathreplay.spectate.hint.mark": "Right click: mark this spot",
 	"deathreplay.replay.hint.mark": "Right click: mark the spot under the cursor",
-	"deathreplay.death.hint.menu": "[Esc] game menu"
+	"deathreplay.death.hint.menu": "[Esc] game menu",
+	"modmenu.nameTranslation.autyism-deathreplay": "Death Replay",
+	"modmenu.summaryTranslation.autyism-deathreplay": "Rewatch the last seconds before you died and look around freely on the death screen. Client-side only.",
+	"modmenu.descriptionTranslation.autyism-deathreplay": "Rewatch the last seconds before you died (30 by default) in third person, first person or a free camera, save replays to files, and look around freely on the death screen. Client-side only: it records what your game already receives and sends nothing to the server."
 }

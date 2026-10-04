@@ -75,5 +75,8 @@
 	"deathreplay.waypoints.need_world": "进入一个世界后才能看到它的标记。",
 	"deathreplay.spectate.hint.mark": "鼠标右键：标记这个地点",
 	"deathreplay.replay.hint.mark": "点一下鼠标右键：标记光标所指的地点",
-	"deathreplay.death.hint.menu": "[Esc] 游戏菜单"
+	"deathreplay.death.hint.menu": "[Esc] 游戏菜单",
+	"modmenu.nameTranslation.autyism-deathreplay": "死亡回放",
+	"modmenu.summaryTranslation.autyism-deathreplay": "回看死前最后几秒，死亡界面自由视角。纯客户端，不向服务器发送任何数据。",
+	"modmenu.descriptionTranslation.autyism-deathreplay": "回看死前的最后几秒（默认 30 秒），可用第三人称、第一人称或自由视角观看，还能把回放保存成文件；死亡界面上也能自由转动镜头查看现场。纯客户端：只记录游戏本来就收到的内容，不向服务器发送任何数据。"
 }
