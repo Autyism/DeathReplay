@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.1.0+26.2 — 2026-10-08
+
+- Death Replay for Minecraft 26.2, same features as 0.1.0 for 1.21.11.
+- Needs Java 25 and Fabric Loader 0.19.5 or newer.
+
+### 中文
+
+- 适用于 Minecraft 26.2 的 Death Replay，功能与 1.21.11 的 0.1.0 相同。
+- 需要 Java 25 和 Fabric Loader 0.19.5 或更新。
+
 ## 0.1.0+26.1.2 — 2026-10-08
 
 - Death Replay for Minecraft 26.1–26.1.2, same features as 0.1.0 for 1.21.11.
