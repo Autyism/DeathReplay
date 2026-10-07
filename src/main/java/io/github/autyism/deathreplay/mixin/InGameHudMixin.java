@@ -13,6 +13,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * Leaves the in-game HUD (hotbar, hearts, chat) out while the replay or the look-around
  * screen is open, so nothing covers the scene.
  */
+//? if >=26.2 {
+/*@Mixin(net.minecraft.client.gui.Hud.class)
+*///?} else
 @Mixin(Gui.class)
 public abstract class InGameHudMixin {
 	//? if >=26.1 {

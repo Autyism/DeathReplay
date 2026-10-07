@@ -43,9 +43,29 @@ stonecutter parameters {
         "\\bScreenEvents\\.afterRender\\(" to "ScreenEvents.afterExtract(",
     )
     // 26.1: a level's random source is no longer public ("world" is always a ClientLevel in this code).
-    // The player's chat message method is gone; 1.21.11's displayClientMessage(text, false) made exactly this call.
     oneWay(current.parsed >= "26.1",
         "\\bworld\\.random\\b" to "world.getRandom()",
+    )
+    // 26.1: the player's chat message method is gone; 1.21.11's displayClientMessage(text, false) made exactly
+    // this call. From 26.2 the chat listener belongs to Gui.
+    oneWay(current.parsed >= "26.1" && current.parsed < "26.2",
         "\\bclient\\.player\\.displayClientMessage\\(" to "client.getChatListener().handleSystemMessage(",
+    )
+    oneWay(current.parsed >= "26.2",
+        "\\bclient\\.player\\.displayClientMessage\\(" to "client.gui.chatListener().handleSystemMessage(",
+    )
+    // 26.2: the open screen moved from Minecraft to Gui, the HUD and chat to Gui's Hud, and the level renderer's
+    // per-level part to LevelExtractor. "client" and "c" are always a Minecraft in this code.
+    oneWay(current.parsed >= "26.2",
+        "(?<![.\\w])(client|c)\\.screen\\b" to "$1.gui.screen()",
+        "\\bMinecraft\\.getInstance\\(\\)\\.screen\\b" to "Minecraft.getInstance().gui.screen()",
+        "\\b(client|c|this\\.minecraft)\\.setScreen\\(" to "$1.gui.setScreen(",
+        "\\bc\\.getOverlay\\(\\)" to "c.gui.overlay()",
+        "\\bc\\.getMainRenderTarget\\(\\)" to "c.gameRenderer.mainRenderTarget()",
+        "\\.getMainCamera\\(\\)" to ".mainCamera()",
+        "\\b(client|c)\\.levelRenderer\\b" to "$1.levelExtractor",
+        "\\bclient\\.options\\.hideGui\\b" to "client.gui.hud.isHidden()",
+        "\\.gui\\.getChat\\(\\)" to ".gui.hud.getChat()",
+        "\\bEntityType\\.(PLAYER|ARMOR_STAND|ZOMBIE)\\b" to "net.minecraft.world.entity.EntityTypes.$1",
     )
 }

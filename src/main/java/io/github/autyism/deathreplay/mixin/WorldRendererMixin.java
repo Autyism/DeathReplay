@@ -10,12 +10,17 @@ import org.spongepowered.asm.mixin.injection.At;
  * A detached camera can be inside solid rock. Vanilla (and Sodium, which receives the same
  * flag) only looks through rock for spectators: with the camera in an opaque block they stop
  * hiding the chunk sections "behind" it. Without this, caves seen from inside the rock are
- * drawn only partly or not at all.
+ * drawn only partly or not at all. (26.2+: the camera decides this itself.)
  */
+//? if >=26.2 {
+/*@Mixin(net.minecraft.client.Camera.class)
+*///?} else
 @Mixin(LevelRenderer.class)
 public abstract class WorldRendererMixin {
 	@ModifyExpressionValue(
-		//? if >=26.1 {
+		//? if >=26.2 {
+		/*method = "extractRenderState",
+		*///?} elif >=26.1 {
 		/*method = "update",
 		*///?} else
 		method = "renderLevel",

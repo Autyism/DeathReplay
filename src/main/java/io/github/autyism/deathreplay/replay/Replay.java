@@ -388,6 +388,12 @@ public final class Replay {
 		client.levelRenderer.setLevel(target);
 		client.particleEngine.setLevel(target);
 		client.gameRenderer.setLevel(target);
+		//? if >=26.2 {
+		/*if (target != null && target == client.level && client.player != null) {
+			// Back to the real world: its chunks have to be listed for the renderer again (see LoadedChunks).
+			LoadedChunks.announce(target, client.player.chunkPosition());
+		}
+		*///?}
 	}
 
 	/**

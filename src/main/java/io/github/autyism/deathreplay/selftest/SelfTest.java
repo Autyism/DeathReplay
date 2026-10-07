@@ -1273,8 +1273,14 @@ public final class SelfTest {
 			);
 			//?}
 			Screen parent = client.screen;
+			//? if >=26.2 {
+			/*// The game's own flat-world helper now makes the other dimensions flat too; this is the plain flat preset.
+			client.createWorldOpenFlows().createFreshLevel(WORLD_NAME, levelInfo, WorldOptions.testWorldWithRandomSeed(),
+				registries -> registries.lookupOrThrow(net.minecraft.core.registries.Registries.WORLD_PRESET).getOrThrow(WorldPresets.FLAT).value().createWorldDimensions(), parent);
+			*///?} else {
 			client.createWorldOpenFlows()
 				.createFreshLevel(WORLD_NAME, levelInfo, WorldOptions.testWorldWithRandomSeed(), WorldPresets::createFlatWorldDimensions, parent);
+			//?}
 		}
 	}
 
