@@ -27,9 +27,9 @@
 		"deathreplay.mixins.json"
 	],
 	"depends": {
-		"fabricloader": ">=0.19.5",
-		"minecraft": "~1.21.11",
-		"java": ">=21",
+		"fabricloader": "${loader_compat}",
+		"minecraft": "${minecraft_compat}",
+		"java": ">=${java}",
 		"fabric-api": "*"
 	},
 	"suggests": {

@@ -1,7 +1,7 @@
 {
 	"required": true,
 	"package": "io.github.autyism.deathreplay.mixin",
-	"compatibilityLevel": "JAVA_21",
+	"compatibilityLevel": "${mixin_java}",
 	"plugin": "io.github.autyism.deathreplay.mixin.DeathReplayMixinPlugin",
 	"client": [
 		"BiomeAccessAccessor",

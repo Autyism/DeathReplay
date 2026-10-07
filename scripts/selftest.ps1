@@ -1,22 +1,27 @@
 # Runs the in-game self test (-Ddr.selftest=true) and waits for it to finish.
 #
-# Starts `gradlew runClient` as a separate process, polls run/logs/latest.log until
-# "[SelfTest] DONE", a crash, or the timeout (6 minutes), then makes sure the game's
-# java process is gone. Exit code 0 = PASS, 1 = anything else.
+# Starts `gradlew :<version>:runClient` as a separate process, polls the dev client's
+# logs\latest.log until "[SelfTest] DONE", a crash, or the timeout (6 minutes), then makes sure
+# the game's java process is gone. Exit code 0 = PASS, 1 = anything else.
 #
-# Usage (from anywhere):  powershell -ExecutionPolicy Bypass -File scripts\selftest.ps1
+# Usage (from anywhere):  powershell -ExecutionPolicy Bypass -File scripts\selftest.ps1 [-Version 26.1.2] [-Sodium]
+# Gradle needs JAVA_HOME on JDK 25. The 1.21.11 dev client runs in run\, every other version in
+# versions\<version>\run\ (worlds and saved replays only load in the version that wrote them).
 param(
 	[int]$TimeoutSeconds = 360,
+	# Minecraft version to test (one of the versions in settings.gradle.kts).
+	[string]$Version = '1.21.11',
 	# Run with Sodium in the dev client (I play with it; it replaces the chunk renderer).
 	[switch]$Sodium
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$log = Join-Path $root 'run\logs\latest.log'
-$gradleOut = Join-Path $root 'build\selftest-gradle.log'
-$gradleErr = Join-Path $root 'build\selftest-gradle.err.log'
-$crashDir = Join-Path $root 'run\crash-reports'
+$runDir = if ($Version -eq '1.21.11') { Join-Path $root 'run' } else { Join-Path $root "versions\$Version\run" }
+$log = Join-Path $runDir 'logs\latest.log'
+$gradleOut = Join-Path $root "build\selftest-gradle-$Version.log"
+$gradleErr = Join-Path $root "build\selftest-gradle-$Version.err.log"
+$crashDir = Join-Path $runDir 'crash-reports'
 
 # Only ever touch the game process that belongs to THIS project. Other java processes on
 # this machine (the Minecraft server, other projects' dev clients, Gradle daemons) are off limits.
@@ -34,7 +39,7 @@ New-Item -ItemType Directory -Force (Join-Path $root 'build') | Out-Null
 if (Test-Path $log) { Remove-Item $log -Force }
 $crashesBefore = @(Get-ChildItem $crashDir -Filter '*.txt' -ErrorAction SilentlyContinue).Count
 
-$gradleArgs = @('runClient', '--console=plain', '"-Ddr.selftest=true"')
+$gradleArgs = @(":$($Version):runClient", '--console=plain', '"-Ddr.selftest=true"')
 if ($Sodium) { $gradleArgs += '-Pwith_sodium=true' }
 $gradle = Start-Process -FilePath (Join-Path $root 'gradlew.bat') `
 	-ArgumentList $gradleArgs `
@@ -60,7 +65,7 @@ Get-GameProcess | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $killed
 Start-Sleep -Seconds 2
 $stillRunning = @(Get-GameProcess).Count
 
-Write-Output "[selftest.ps1] outcome: $outcome"
+Write-Output "[selftest.ps1] Minecraft $Version, outcome: $outcome"
 if (Test-Path $log) {
 	Select-String -Path $log -Pattern '\[SelfTest\]' -CaseSensitive | ForEach-Object { $_.Line }
 } else {
