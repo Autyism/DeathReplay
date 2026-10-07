@@ -3,12 +3,12 @@ package io.github.autyism.deathreplay.death;
 import io.github.autyism.deathreplay.camera.DeathCameraMode;
 import io.github.autyism.deathreplay.waypoint.WaypointHud;
 import io.github.autyism.deathreplay.waypoint.Waypoints;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
@@ -28,22 +28,22 @@ public class DeathSpectateScreen extends Screen {
 	private final DeathScreen parent;
 	/** "Marked: ..." line shown for a moment after a right click. */
 	@Nullable
-	private Text notice;
+	private Component notice;
 	private int noticeTicksLeft;
 
 	public DeathSpectateScreen(DeathScreen parent) {
-		super(Text.translatable("deathreplay.spectate.title"));
+		super(Component.translatable("deathreplay.spectate.title"));
 		this.parent = parent;
 	}
 
 	@Override
 	protected void init() {
-		DeathView.setControlling(this.client, true);
+		DeathView.setControlling(this.minecraft, true);
 	}
 
 	@Override
 	public void removed() {
-		DeathView.setControlling(this.client, false);
+		DeathView.setControlling(this.minecraft, false);
 	}
 
 	@Override
@@ -51,12 +51,12 @@ public class DeathSpectateScreen extends Screen {
 		if (!DeathView.isActive()) {
 			// Respawned (or the feature was switched off): hand control back to vanilla,
 			// which shows the death screen if the player is still dead and the game otherwise.
-			this.client.setScreen(null);
+			this.minecraft.setScreen(null);
 			return;
 		}
 
 		// The mouse can only be grabbed while the window has focus; retry after alt-tabbing back.
-		DeathView.regrabMouse(this.client);
+		DeathView.regrabMouse(this.minecraft);
 		if (this.noticeTicksLeft > 0) {
 			this.noticeTicksLeft--;
 		}
@@ -64,11 +64,11 @@ public class DeathSpectateScreen extends Screen {
 
 	/** Right click: drop a marker on whatever the crosshair points at. */
 	@Override
-	public boolean mouseClicked(Click click, boolean doubled) {
-		if (click.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && this.client.world != null) {
-			Waypoints.Marker marker = Waypoints.addFromCamera(this.client, this.client.world, DeathView.getCamera());
+	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		if (click.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && this.minecraft.level != null) {
+			Waypoints.Marker marker = Waypoints.addFromCamera(this.minecraft, this.minecraft.level, DeathView.getCamera());
 			if (marker != null) {
-				this.notice = Text.translatable("deathreplay.waypoint.added", marker.name, marker.x, marker.y, marker.z);
+				this.notice = Component.translatable("deathreplay.waypoint.added", marker.name, marker.x, marker.y, marker.z);
 				this.noticeTicksLeft = NOTICE_TICKS;
 			}
 
@@ -79,13 +79,13 @@ public class DeathSpectateScreen extends Screen {
 	}
 
 	@Override
-	public void close() {
-		this.client.setScreen(DeathView.isActive() ? this.parent : null);
+	public void onClose() {
+		this.minecraft.setScreen(DeathView.isActive() ? this.parent : null);
 	}
 
 	@Override
-	public boolean keyPressed(KeyInput input) {
-		if (this.client.options.togglePerspectiveKey.matchesKey(input)) {
+	public boolean keyPressed(KeyEvent input) {
+		if (this.minecraft.options.keyTogglePerspective.matches(input)) {
 			DeathView.cycleMode();
 			return true;
 		}
@@ -100,18 +100,18 @@ public class DeathSpectateScreen extends Screen {
 	}
 
 	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+	public void render(GuiGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		DeathCameraMode mode = DeathView.getMode();
-		Text perspectiveKey = this.client.options.togglePerspectiveKey.getBoundKeyLocalizedText();
+		Component perspectiveKey = this.minecraft.options.keyTogglePerspective.getTranslatedKeyMessage();
 		int centerX = this.width / 2;
-		context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.spectate.mode", mode.getDisplayName()), centerX, 8, TEXT_COLOR);
-		context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.spectate.hint", perspectiveKey), centerX, 20, HINT_COLOR);
+		context.drawCenteredString(this.font, Component.translatable("deathreplay.spectate.mode", mode.getDisplayName()), centerX, 8, TEXT_COLOR);
+		context.drawCenteredString(this.font, Component.translatable("deathreplay.spectate.hint", perspectiveKey), centerX, 20, HINT_COLOR);
 		if (mode == DeathCameraMode.FREE) {
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.spectate.hint.free"), centerX, 32, HINT_COLOR);
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.spectate.hint.free2"), centerX, 44, HINT_COLOR);
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.spectate.hint.free"), centerX, 32, HINT_COLOR);
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.spectate.hint.free2"), centerX, 44, HINT_COLOR);
 		} else {
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.spectate.hint.orbit"), centerX, 32, HINT_COLOR);
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.spectate.hint.mark"), centerX, 44, HINT_COLOR);
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.spectate.hint.orbit"), centerX, 32, HINT_COLOR);
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.spectate.hint.mark"), centerX, 44, HINT_COLOR);
 		}
 
 		// A crosshair, because the right click marks what the centre of the screen points at.
@@ -119,19 +119,19 @@ public class DeathSpectateScreen extends Screen {
 		context.fill(centerX - 5, centerY, centerX + 6, centerY + 1, CROSSHAIR_COLOR);
 		context.fill(centerX, centerY - 5, centerX + 1, centerY + 6, CROSSHAIR_COLOR);
 
-		WaypointHud.render(context, this.client, this.client.world.getRegistryKey());
+		WaypointHud.render(context, this.minecraft, this.minecraft.level.dimension());
 		if (this.notice != null && this.noticeTicksLeft > 0) {
-			context.drawCenteredTextWithShadow(this.textRenderer, this.notice, centerX, 60, NOTICE_COLOR);
+			context.drawCenteredString(this.font, this.notice, centerX, 60, NOTICE_COLOR);
 		}
 	}
 
 	@Override
-	public void renderBackground(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+	public void renderBackground(GuiGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		// No blur, no dimming, no red tint: the point of this screen is an unobstructed view.
 	}
 
 	@Override
-	public boolean shouldPause() {
+	public boolean isPauseScreen() {
 		return false;
 	}
 }

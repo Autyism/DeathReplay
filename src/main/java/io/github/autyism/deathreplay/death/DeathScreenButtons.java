@@ -8,12 +8,12 @@ import io.github.autyism.deathreplay.replay.Replay;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenEvents;
 import net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents;
 import net.fabricmc.fabric.api.client.screen.v1.Screens;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.gui.screen.GameMenuScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.PauseScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -34,7 +34,7 @@ public final class DeathScreenButtons {
 		ScreenEvents.AFTER_INIT.register(DeathScreenButtons::afterInit);
 	}
 
-	private static void afterInit(MinecraftClient client, Screen screen, int scaledWidth, int scaledHeight) {
+	private static void afterInit(Minecraft client, Screen screen, int scaledWidth, int scaledHeight) {
 		if (!(screen instanceof DeathScreen deathScreen)) {
 			return;
 		}
@@ -51,7 +51,7 @@ public final class DeathScreenButtons {
 			return true;
 		});
 		ScreenEvents.afterRender(screen).register((rendered, context, mouseX, mouseY, tickDelta) ->
-			context.drawTextWithShadow(Screens.getTextRenderer(rendered), Text.translatable("deathreplay.death.hint.menu"), 4, rendered.height - 12, 0xFFC0C0C0));
+			context.drawString(Screens.getTextRenderer(rendered), Component.translatable("deathreplay.death.hint.menu"), 4, rendered.height - 12, 0xFFC0C0C0));
 
 		// The death screen is created while the death packet is handled, before DeathView has had
 		// a tick to start, so decide by the setting rather than by DeathView.isActive().
@@ -60,19 +60,19 @@ public final class DeathScreenButtons {
 		int firstRow = scaledHeight / 4 + FIRST_ROW_OFFSET;
 		int secondRow = scaledHeight / 4 + SECOND_ROW_OFFSET;
 
-		ButtonWidget replay = ButtonWidget.builder(Text.translatable("deathreplay.button.replay"), button -> Replay.open(client))
-			.dimensions(left, firstRow, freeCamera ? HALF_WIDTH : FULL_WIDTH, 20)
+		Button replay = Button.builder(Component.translatable("deathreplay.button.replay"), button -> Replay.open(client))
+			.bounds(left, firstRow, freeCamera ? HALF_WIDTH : FULL_WIDTH, 20)
 			.build();
-		ButtonWidget save = ButtonWidget.builder(Text.translatable("deathreplay.button.save"), button -> save(client))
-			.dimensions(left, secondRow, FULL_WIDTH, 20)
+		Button save = Button.builder(Component.translatable("deathreplay.button.save"), button -> save(client))
+			.bounds(left, secondRow, FULL_WIDTH, 20)
 			.build();
 		Screens.getButtons(screen).add(replay);
 		Screens.getButtons(screen).add(save);
 
 		if (freeCamera) {
 			Screens.getButtons(screen).add(
-				ButtonWidget.builder(Text.translatable("deathreplay.button.free_camera"), button -> DeathView.openSpectate(client))
-					.dimensions(left + FULL_WIDTH - HALF_WIDTH, firstRow, HALF_WIDTH, 20)
+				Button.builder(Component.translatable("deathreplay.button.free_camera"), button -> DeathView.openSpectate(client))
+					.bounds(left + FULL_WIDTH - HALF_WIDTH, firstRow, HALF_WIDTH, 20)
 					.build()
 			);
 		}
@@ -85,20 +85,20 @@ public final class DeathScreenButtons {
 			replay.active = recording != null && Replay.canPlay(client);
 			boolean saved = recording != null && ReplayFileWriter.isSaved(recording);
 			save.active = recording != null && !saved && !ReplayFileWriter.isSaving(recording);
-			save.setMessage(Text.translatable(saved ? "deathreplay.button.saved" : "deathreplay.button.save"));
+			save.setMessage(Component.translatable(saved ? "deathreplay.button.saved" : "deathreplay.button.save"));
 		};
 		refresh.run();
 		ScreenEvents.afterTick(screen).register(tickedScreen -> refresh.run());
 	}
 
 	/** Opens the game menu on top of the death screen. */
-	public static void openGameMenu(MinecraftClient client) {
-		if (client.currentScreen instanceof DeathScreen) {
-			client.setScreen(new GameMenuScreen(true));
+	public static void openGameMenu(Minecraft client) {
+		if (client.screen instanceof DeathScreen) {
+			client.setScreen(new PauseScreen(true));
 		}
 	}
 
-	private static void save(MinecraftClient client) {
+	private static void save(Minecraft client) {
 		Recording recording = Recorder.getFrozen();
 		if (recording != null) {
 			ReplayFileWriter.saveAndAnnounce(client, recording);

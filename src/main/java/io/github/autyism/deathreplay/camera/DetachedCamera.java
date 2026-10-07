@@ -1,11 +1,11 @@
 package io.github.autyism.deathreplay.camera;
 
-import net.minecraft.entity.Entity;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
 
 /**
  * A camera pose that is not tied to an entity, plus the two ways of moving it:
@@ -18,11 +18,11 @@ public final class DetachedCamera {
 	public static final float MIN_PITCH = -89.0F;
 	public static final float MAX_PITCH = 89.0F;
 
-	private Vec3d pos = Vec3d.ZERO;
+	private Vec3 pos = Vec3.ZERO;
 	private float yaw;
 	private float pitch;
 
-	public Vec3d getPos() {
+	public Vec3 getPos() {
 		return this.pos;
 	}
 
@@ -34,13 +34,13 @@ public final class DetachedCamera {
 		return this.pitch;
 	}
 
-	public void setPos(Vec3d pos) {
+	public void setPos(Vec3 pos) {
 		this.pos = pos;
 	}
 
 	public void setRotation(float yaw, float pitch) {
 		this.yaw = yaw;
-		this.pitch = MathHelper.clamp(pitch, MIN_PITCH, MAX_PITCH);
+		this.pitch = Mth.clamp(pitch, MIN_PITCH, MAX_PITCH);
 	}
 
 	public void rotate(float yawDelta, float pitchDelta) {
@@ -52,21 +52,21 @@ public final class DetachedCamera {
 	 * current yaw/pitch. Walls between the target and the camera shorten the leash, like the
 	 * vanilla third-person camera.
 	 */
-	public void orbit(World world, Entity ignored, Vec3d target, double distance) {
-		Vec3d backwards = Vec3d.fromPolar(this.pitch, this.yaw).multiply(-1.0);
+	public void orbit(Level world, Entity ignored, Vec3 target, double distance) {
+		Vec3 backwards = Vec3.directionFromRotation(this.pitch, this.yaw).scale(-1.0);
 		double clipped = distance;
 
 		for (int i = 0; i < 8; i++) {
-			Vec3d offset = new Vec3d(((i & 1) * 2 - 1) * 0.1, ((i >> 1 & 1) * 2 - 1) * 0.1, ((i >> 2 & 1) * 2 - 1) * 0.1);
-			Vec3d start = target.add(offset);
-			Vec3d end = start.add(backwards.multiply(distance));
-			HitResult hit = world.raycast(new RaycastContext(start, end, RaycastContext.ShapeType.VISUAL, RaycastContext.FluidHandling.NONE, ignored));
+			Vec3 offset = new Vec3(((i & 1) * 2 - 1) * 0.1, ((i >> 1 & 1) * 2 - 1) * 0.1, ((i >> 2 & 1) * 2 - 1) * 0.1);
+			Vec3 start = target.add(offset);
+			Vec3 end = start.add(backwards.scale(distance));
+			HitResult hit = world.clip(new ClipContext(start, end, ClipContext.Block.VISUAL, ClipContext.Fluid.NONE, ignored));
 			if (hit.getType() != HitResult.Type.MISS) {
-				clipped = Math.min(clipped, hit.getPos().distanceTo(target));
+				clipped = Math.min(clipped, hit.getLocation().distanceTo(target));
 			}
 		}
 
-		this.pos = target.add(backwards.multiply(clipped));
+		this.pos = target.add(backwards.scale(clipped));
 	}
 
 	/**
@@ -80,14 +80,14 @@ public final class DetachedCamera {
 		}
 
 		float yawRad = this.yaw * (float) (Math.PI / 180.0);
-		double sin = MathHelper.sin(yawRad);
-		double cos = MathHelper.cos(yawRad);
+		double sin = Mth.sin(yawRad);
+		double cos = Mth.cos(yawRad);
 		// yaw 0 looks towards +Z; "left" (positive strafe) is +X at yaw 0.
-		Vec3d wish = new Vec3d(strafe * cos - forward * sin, up, forward * cos + strafe * sin);
-		if (wish.lengthSquared() > 1.0) {
+		Vec3 wish = new Vec3(strafe * cos - forward * sin, up, forward * cos + strafe * sin);
+		if (wish.lengthSqr() > 1.0) {
 			wish = wish.normalize();
 		}
 
-		this.pos = this.pos.add(wish.multiply(blocks));
+		this.pos = this.pos.add(wish.scale(blocks));
 	}
 }

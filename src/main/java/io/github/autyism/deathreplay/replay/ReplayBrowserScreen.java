@@ -13,11 +13,11 @@ import io.github.autyism.deathreplay.record.Recorder;
 import io.github.autyism.deathreplay.record.Recording;
 import io.github.autyism.deathreplay.record.ReplayFileReader;
 import io.github.autyism.deathreplay.record.ReplayFileWriter;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.screen.ScreenTexts;
-import net.minecraft.text.Text;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
 import net.minecraft.util.Util;
 import org.jetbrains.annotations.Nullable;
 
@@ -40,64 +40,64 @@ public class ReplayBrowserScreen extends Screen {
 	private List<Path> files = List.of();
 	private int page;
 	@Nullable
-	private Text error;
+	private Component error;
 
 	public ReplayBrowserScreen(@Nullable Screen parent) {
-		super(Text.translatable("deathreplay.browser.title"));
+		super(Component.translatable("deathreplay.browser.title"));
 		this.parent = parent;
 	}
 
 	@Override
 	protected void init() {
-		this.files = listFiles(ReplayFileWriter.directory(this.client));
+		this.files = listFiles(ReplayFileWriter.directory(this.minecraft));
 		int pages = Math.max(1, (this.files.size() + FILES_PER_PAGE - 1) / FILES_PER_PAGE);
 		this.page = Math.min(this.page, pages - 1);
-		boolean canPlay = Replay.canPlay(this.client);
+		boolean canPlay = Replay.canPlay(this.minecraft);
 		int x = this.width / 2 - ROW_WIDTH / 2;
 		int y = 34;
 
 		Recording latest = Recorder.getLast();
-		ButtonWidget latestButton = ButtonWidget.builder(Text.translatable("deathreplay.browser.latest"), button -> {
-			if (!Replay.open(this.client)) {
-				this.error = Text.translatable("deathreplay.browser.cannot_play");
+		Button latestButton = Button.builder(Component.translatable("deathreplay.browser.latest"), button -> {
+			if (!Replay.open(this.minecraft)) {
+				this.error = Component.translatable("deathreplay.browser.cannot_play");
 			}
-		}).dimensions(x, y, ROW_WIDTH, 20).build();
+		}).bounds(x, y, ROW_WIDTH, 20).build();
 		latestButton.active = latest != null && canPlay;
-		this.addDrawableChild(latestButton);
+		this.addRenderableWidget(latestButton);
 		y += ROW_HEIGHT + 6;
 
 		for (int i = this.page * FILES_PER_PAGE; i < Math.min(this.files.size(), (this.page + 1) * FILES_PER_PAGE); i++) {
 			Path file = this.files.get(i);
-			ButtonWidget button = ButtonWidget.builder(label(file), pressed -> this.play(file)).dimensions(x, y, ROW_WIDTH, 20).build();
+			Button button = Button.builder(label(file), pressed -> this.play(file)).bounds(x, y, ROW_WIDTH, 20).build();
 			button.active = canPlay;
-			this.addDrawableChild(button);
+			this.addRenderableWidget(button);
 			y += ROW_HEIGHT;
 		}
 
 		int bottom = this.height - 28;
 		int quarter = (ROW_WIDTH - 12) / 4;
-		ButtonWidget previous = ButtonWidget.builder(Text.translatable("deathreplay.browser.previous"), button -> this.turnPage(-1)).dimensions(x, bottom, quarter, 20).build();
-		ButtonWidget next = ButtonWidget.builder(Text.translatable("deathreplay.browser.next"), button -> this.turnPage(1)).dimensions(x + quarter + 4, bottom, quarter, 20).build();
+		Button previous = Button.builder(Component.translatable("deathreplay.browser.previous"), button -> this.turnPage(-1)).bounds(x, bottom, quarter, 20).build();
+		Button next = Button.builder(Component.translatable("deathreplay.browser.next"), button -> this.turnPage(1)).bounds(x + quarter + 4, bottom, quarter, 20).build();
 		previous.active = this.page > 0;
 		next.active = this.page < pages - 1;
-		this.addDrawableChild(previous);
-		this.addDrawableChild(next);
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.browser.open_folder"), button -> this.openFolder())
-			.dimensions(x + (quarter + 4) * 2, bottom, quarter, 20).build());
-		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.BACK, button -> this.close())
-			.dimensions(x + (quarter + 4) * 3, bottom, quarter, 20).build());
+		this.addRenderableWidget(previous);
+		this.addRenderableWidget(next);
+		this.addRenderableWidget(Button.builder(Component.translatable("deathreplay.browser.open_folder"), button -> this.openFolder())
+			.bounds(x + (quarter + 4) * 2, bottom, quarter, 20).build());
+		this.addRenderableWidget(Button.builder(CommonComponents.GUI_BACK, button -> this.onClose())
+			.bounds(x + (quarter + 4) * 3, bottom, quarter, 20).build());
 	}
 
 	private void turnPage(int direction) {
 		this.page = Math.max(0, this.page + direction);
-		this.clearAndInit();
+		this.rebuildWidgets();
 	}
 
 	private void openFolder() {
-		Path directory = ReplayFileWriter.directory(this.client);
+		Path directory = ReplayFileWriter.directory(this.minecraft);
 		try {
 			Files.createDirectories(directory);
-			Util.getOperatingSystem().open(directory);
+			Util.getPlatform().openPath(directory);
 		} catch (IOException e) {
 			DeathReplayClient.LOGGER.warn("Could not open {}", directory, e);
 		}
@@ -106,19 +106,19 @@ public class ReplayBrowserScreen extends Screen {
 	/** Loads a saved replay and plays it. Public so the self-test can go through the same path as a click. */
 	public void play(Path file) {
 		this.error = null;
-		if (!Replay.canPlay(this.client)) {
-			this.error = Text.translatable("deathreplay.browser.need_world");
+		if (!Replay.canPlay(this.minecraft)) {
+			this.error = Component.translatable("deathreplay.browser.need_world");
 			return;
 		}
 
 		try {
-			Recording recording = ReplayFileReader.read(file, this.client.world.getRegistryManager());
-			if (!Replay.open(this.client, recording)) {
-				this.error = Text.translatable("deathreplay.browser.cannot_play");
+			Recording recording = ReplayFileReader.read(file, this.minecraft.level.registryAccess());
+			if (!Replay.open(this.minecraft, recording)) {
+				this.error = Component.translatable("deathreplay.browser.cannot_play");
 			}
 		} catch (IOException e) {
 			DeathReplayClient.LOGGER.warn("Could not read replay {}", file, e);
-			this.error = Text.translatable("deathreplay.browser.unreadable", file.getFileName().toString());
+			this.error = Component.translatable("deathreplay.browser.unreadable", file.getFileName().toString());
 		}
 	}
 
@@ -141,7 +141,7 @@ public class ReplayBrowserScreen extends Screen {
 	}
 
 	/** "death_2026-10-01_12-32-27.nbt" becomes "2026-10-01 12:32:27  (25 KB)". */
-	private static Text label(Path file) {
+	private static Component label(Path file) {
 		String name = file.getFileName().toString();
 		String stamp = name.substring(FILE_PREFIX.length(), name.length() - FILE_SUFFIX.length());
 		int split = stamp.indexOf('_');
@@ -153,30 +153,30 @@ public class ReplayBrowserScreen extends Screen {
 			kiloBytes = 0L;
 		}
 
-		return Text.translatable("deathreplay.browser.file", shown, kiloBytes);
+		return Component.translatable("deathreplay.browser.file", shown, kiloBytes);
 	}
 
 	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+	public void render(GuiGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		super.render(context, mouseX, mouseY, deltaTicks);
 		int centerX = this.width / 2;
-		context.drawCenteredTextWithShadow(this.textRenderer, this.title, centerX, 14, TITLE_COLOR);
+		context.drawCenteredString(this.font, this.title, centerX, 14, TITLE_COLOR);
 
 		int noteY = this.height - 44;
 		if (this.error != null) {
-			context.drawCenteredTextWithShadow(this.textRenderer, this.error, centerX, noteY, ERROR_COLOR);
-		} else if (!Replay.canPlay(this.client)) {
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.browser.need_world"), centerX, noteY, NOTE_COLOR);
+			context.drawCenteredString(this.font, this.error, centerX, noteY, ERROR_COLOR);
+		} else if (!Replay.canPlay(this.minecraft)) {
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.browser.need_world"), centerX, noteY, NOTE_COLOR);
 		} else if (this.files.isEmpty()) {
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.browser.empty"), centerX, noteY, NOTE_COLOR);
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.browser.empty"), centerX, noteY, NOTE_COLOR);
 		} else {
 			int pages = (this.files.size() + FILES_PER_PAGE - 1) / FILES_PER_PAGE;
-			context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.browser.page", this.page + 1, pages, this.files.size()), centerX, noteY, NOTE_COLOR);
+			context.drawCenteredString(this.font, Component.translatable("deathreplay.browser.page", this.page + 1, pages, this.files.size()), centerX, noteY, NOTE_COLOR);
 		}
 	}
 
 	@Override
-	public void close() {
-		this.client.setScreen(this.parent);
+	public void onClose() {
+		this.minecraft.setScreen(this.parent);
 	}
 }

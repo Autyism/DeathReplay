@@ -1,10 +1,10 @@
 package io.github.autyism.deathreplay.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
+import com.mojang.blaze3d.vertex.PoseStack;
 import io.github.autyism.deathreplay.camera.CameraOverride;
-import net.minecraft.client.render.GameRenderer;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.GameRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -20,8 +20,8 @@ public abstract class GameRendererMixin {
 	 * Vanilla rolls the view sideways while the player is dead or hurt. That belongs to the
 	 * player's own eyes, not to a detached camera.
 	 */
-	@Inject(method = "tiltViewWhenHurt", at = @At("HEAD"), cancellable = true)
-	private void deathreplay$noTiltWhileDetached(MatrixStack matrices, float tickProgress, CallbackInfo ci) {
+	@Inject(method = "bobHurt", at = @At("HEAD"), cancellable = true)
+	private void deathreplay$noTiltWhileDetached(PoseStack matrices, float tickProgress, CallbackInfo ci) {
 		if (CameraOverride.isActive()) {
 			ci.cancel();
 		}
@@ -41,11 +41,11 @@ public abstract class GameRendererMixin {
 	 * Only what this renderer reads is swapped; the game's world field stays as it is.
 	 */
 	@ModifyExpressionValue(
-		method = {"updateCamera", "renderWorld"},
-		at = @At(value = "FIELD", target = "Lnet/minecraft/client/MinecraftClient;world:Lnet/minecraft/client/world/ClientWorld;")
+		method = {"updateCamera", "renderLevel"},
+		at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;level:Lnet/minecraft/client/multiplayer/ClientLevel;")
 	)
-	private ClientWorld deathreplay$renderTheStage(ClientWorld original) {
-		ClientWorld stage = CameraOverride.getStage();
+	private ClientLevel deathreplay$renderTheStage(ClientLevel original) {
+		ClientLevel stage = CameraOverride.getStage();
 		return stage != null ? stage : original;
 	}
 }

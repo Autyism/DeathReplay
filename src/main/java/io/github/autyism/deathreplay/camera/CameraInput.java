@@ -1,16 +1,16 @@
 package io.github.autyism.deathreplay.camera;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
+import net.minecraft.client.KeyMapping;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.Options;
 import org.lwjgl.glfw.GLFW;
 
 /**
  * Reads movement keys and mouse motion directly from the window.
  *
- * <p>While a screen is open vanilla releases all key bindings, so {@link KeyBinding#isPressed()}
+ * <p>While a screen is open vanilla releases all key bindings, so {@link KeyMapping#isDown()}
  * is useless there; this asks GLFW for the physical state of whatever the player has bound.
  * Purely local input: nothing here is sent to the server.
  */
@@ -39,17 +39,17 @@ public final class CameraInput {
 	}
 
 	/** Hides the cursor and lets it travel without limits, for mouse-look inside a screen. */
-	public void grabMouse(MinecraftClient client) {
-		if (!this.grabbed && client.isWindowFocused() && !ignoreRealInput) {
-			GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
+	public void grabMouse(Minecraft client) {
+		if (!this.grabbed && client.isWindowActive() && !ignoreRealInput) {
+			GLFW.glfwSetInputMode(client.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
 			this.grabbed = true;
 			this.hasLastMouse = false;
 		}
 	}
 
-	public void releaseMouse(MinecraftClient client) {
+	public void releaseMouse(Minecraft client) {
 		if (this.grabbed) {
-			GLFW.glfwSetInputMode(client.getWindow().getHandle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
+			GLFW.glfwSetInputMode(client.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
 			this.grabbed = false;
 		}
 
@@ -61,12 +61,12 @@ public final class CameraInput {
 	}
 
 	/** Fills {@code state} from the keyboard and mouse. Call once per rendered frame. */
-	public void poll(MinecraftClient client, State state) {
-		GameOptions options = client.options;
-		state.forward = axis(client, options.forwardKey, options.backKey);
-		state.strafe = axis(client, options.leftKey, options.rightKey);
-		state.up = axis(client, options.jumpKey, options.sneakKey);
-		state.sprint = isHeld(client, options.sprintKey);
+	public void poll(Minecraft client, State state) {
+		Options options = client.options;
+		state.forward = axis(client, options.keyUp, options.keyDown);
+		state.strafe = axis(client, options.keyLeft, options.keyRight);
+		state.up = axis(client, options.keyJump, options.keyShift);
+		state.sprint = isHeld(client, options.keySprint);
 		state.yawDelta = 0.0F;
 		state.pitchDelta = 0.0F;
 
@@ -77,21 +77,21 @@ public final class CameraInput {
 			return;
 		}
 
-		if (!this.grabbed || !client.isWindowFocused()) {
+		if (!this.grabbed || !client.isWindowActive()) {
 			this.hasLastMouse = false;
 			return;
 		}
 
-		double x = client.mouse.getX();
-		double y = client.mouse.getY();
+		double x = client.mouseHandler.xpos();
+		double y = client.mouseHandler.ypos();
 		if (this.hasLastMouse) {
 			// Same curve as vanilla mouse-look, so the camera feels like the player's own view.
-			double sensitivity = options.getMouseSensitivity().getValue() * 0.6 + 0.2;
+			double sensitivity = options.sensitivity().get() * 0.6 + 0.2;
 			double scale = sensitivity * sensitivity * sensitivity * 8.0 * 0.15;
 			double dx = (x - this.lastMouseX) * scale;
 			double dy = (y - this.lastMouseY) * scale;
-			state.yawDelta = (float) (options.getInvertMouseX().getValue() ? -dx : dx);
-			state.pitchDelta = (float) (options.getInvertMouseY().getValue() ? -dy : dy);
+			state.yawDelta = (float) (options.invertMouseX().get() ? -dx : dx);
+			state.pitchDelta = (float) (options.invertMouseY().get() ? -dy : dy);
 		}
 
 		this.lastMouseX = x;
@@ -99,20 +99,20 @@ public final class CameraInput {
 		this.hasLastMouse = true;
 	}
 
-	private static double axis(MinecraftClient client, KeyBinding positive, KeyBinding negative) {
+	private static double axis(Minecraft client, KeyMapping positive, KeyMapping negative) {
 		return (isHeld(client, positive) ? 1.0 : 0.0) - (isHeld(client, negative) ? 1.0 : 0.0);
 	}
 
-	private static boolean isHeld(MinecraftClient client, KeyBinding binding) {
-		if (!client.isWindowFocused()) {
+	private static boolean isHeld(Minecraft client, KeyMapping binding) {
+		if (!client.isWindowActive()) {
 			return false;
 		}
 
-		InputUtil.Key key = KeyBindingHelper.getBoundKeyOf(binding);
-		long window = client.getWindow().getHandle();
-		return switch (key.getCategory()) {
-			case KEYSYM -> key.getCode() != InputUtil.UNKNOWN_KEY.getCode() && GLFW.glfwGetKey(window, key.getCode()) == GLFW.GLFW_PRESS;
-			case MOUSE -> GLFW.glfwGetMouseButton(window, key.getCode()) == GLFW.GLFW_PRESS;
+		InputConstants.Key key = KeyBindingHelper.getBoundKeyOf(binding);
+		long window = client.getWindow().handle();
+		return switch (key.getType()) {
+			case KEYSYM -> key.getValue() != InputConstants.UNKNOWN.getValue() && GLFW.glfwGetKey(window, key.getValue()) == GLFW.GLFW_PRESS;
+			case MOUSE -> GLFW.glfwGetMouseButton(window, key.getValue()) == GLFW.GLFW_PRESS;
 			default -> false;
 		};
 	}

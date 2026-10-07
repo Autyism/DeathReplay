@@ -2,21 +2,21 @@ package io.github.autyism.deathreplay.mixin;
 
 import io.github.autyism.deathreplay.record.RecordedEvent;
 import io.github.autyism.deathreplay.record.Recorder;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
-import net.minecraft.network.packet.s2c.play.DeathMessageS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityAnimationS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityStatusS2CPacket;
-import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
-import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
-import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundEntityEventPacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundPlayerCombatKillPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.world.entity.Entity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -31,95 +31,95 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * <p>Each handler is entered twice: first on the network thread, where vanilla immediately
  * re-schedules it, then on the render thread where it really runs. Only the second one counts.
  */
-@Mixin(ClientPlayNetworkHandler.class)
+@Mixin(ClientPacketListener.class)
 public abstract class ClientPlayNetworkHandlerMixin {
 	@Shadow
-	private ClientWorld world;
+	private ClientLevel level;
 
 	@Unique
 	private static boolean deathreplay$onRenderThread() {
-		return MinecraftClient.getInstance().isOnThread();
+		return Minecraft.getInstance().isSameThread();
 	}
 
-	@Inject(method = "onEntitySpawn", at = @At("HEAD"))
-	private void deathreplay$onEntitySpawn(EntitySpawnS2CPacket packet, CallbackInfo ci) {
-		if (deathreplay$onRenderThread() && this.world != null) {
-			Recorder.onEntitySpawn(this.world, packet);
+	@Inject(method = "handleAddEntity", at = @At("HEAD"))
+	private void deathreplay$onEntitySpawn(ClientboundAddEntityPacket packet, CallbackInfo ci) {
+		if (deathreplay$onRenderThread() && this.level != null) {
+			Recorder.onEntitySpawn(this.level, packet);
 		}
 	}
 
-	@Inject(method = "onParticle", at = @At("HEAD"))
-	private void deathreplay$onParticle(ParticleS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleParticleEvent", at = @At("HEAD"))
+	private void deathreplay$onParticle(ClientboundLevelParticlesPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.Particle(packet));
 		}
 	}
 
-	@Inject(method = "onPlaySound", at = @At("HEAD"))
-	private void deathreplay$onPlaySound(PlaySoundS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleSoundEvent", at = @At("HEAD"))
+	private void deathreplay$onPlaySound(ClientboundSoundPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.Sound(packet));
 		}
 	}
 
-	@Inject(method = "onPlaySoundFromEntity", at = @At("HEAD"))
-	private void deathreplay$onPlaySoundFromEntity(PlaySoundFromEntityS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleSoundEntityEvent", at = @At("HEAD"))
+	private void deathreplay$onPlaySoundFromEntity(ClientboundSoundEntityPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.EntitySound(packet));
 		}
 	}
 
-	@Inject(method = "onWorldEvent", at = @At("HEAD"))
-	private void deathreplay$onWorldEvent(WorldEventS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleLevelEvent", at = @At("HEAD"))
+	private void deathreplay$onWorldEvent(ClientboundLevelEventPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.WorldEvent(packet));
 		}
 	}
 
-	@Inject(method = "onExplosion", at = @At("HEAD"))
-	private void deathreplay$onExplosion(ExplosionS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleExplosion", at = @At("HEAD"))
+	private void deathreplay$onExplosion(ClientboundExplodePacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.Explosion(packet));
 		}
 	}
 
-	@Inject(method = "onEntityStatus", at = @At("HEAD"))
-	private void deathreplay$onEntityStatus(EntityStatusS2CPacket packet, CallbackInfo ci) {
-		if (deathreplay$onRenderThread() && Recorder.isCapturing() && this.world != null) {
-			Entity entity = packet.getEntity(this.world);
+	@Inject(method = "handleEntityEvent", at = @At("HEAD"))
+	private void deathreplay$onEntityStatus(ClientboundEntityEventPacket packet, CallbackInfo ci) {
+		if (deathreplay$onRenderThread() && Recorder.isCapturing() && this.level != null) {
+			Entity entity = packet.getEntity(this.level);
 			if (entity != null) {
-				Recorder.onEvent(new RecordedEvent.EntityStatus(entity.getId(), packet.getStatus()));
+				Recorder.onEvent(new RecordedEvent.EntityStatus(entity.getId(), packet.getEventId()));
 			}
 		}
 	}
 
-	@Inject(method = "onEntityAnimation", at = @At("HEAD"))
-	private void deathreplay$onEntityAnimation(EntityAnimationS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleAnimate", at = @At("HEAD"))
+	private void deathreplay$onEntityAnimation(ClientboundAnimatePacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
-			int animation = packet.getAnimationId();
+			int animation = packet.getAction();
 			// Arm swings are sampled from the entity every tick; only the particle bursts need the packet.
-			if (animation == EntityAnimationS2CPacket.CRIT || animation == EntityAnimationS2CPacket.ENCHANTED_HIT) {
-				Recorder.onEvent(new RecordedEvent.EntityAnimation(packet.getEntityId(), animation));
+			if (animation == ClientboundAnimatePacket.CRITICAL_HIT || animation == ClientboundAnimatePacket.MAGIC_CRITICAL_HIT) {
+				Recorder.onEvent(new RecordedEvent.EntityAnimation(packet.getId(), animation));
 			}
 		}
 	}
 
-	@Inject(method = "onEntityDamage", at = @At("HEAD"))
-	private void deathreplay$onEntityDamage(EntityDamageS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleDamageEvent", at = @At("HEAD"))
+	private void deathreplay$onEntityDamage(ClientboundDamageEventPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.EntityDamage(packet));
 		}
 	}
 
-	@Inject(method = "onBlockBreakingProgress", at = @At("HEAD"))
-	private void deathreplay$onBlockBreakingProgress(BlockBreakingProgressS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handleBlockDestruction", at = @At("HEAD"))
+	private void deathreplay$onBlockBreakingProgress(ClientboundBlockDestructionPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onEvent(new RecordedEvent.BlockBreaking(packet));
 		}
 	}
 
-	@Inject(method = "onDeathMessage", at = @At("HEAD"))
-	private void deathreplay$onDeathMessage(DeathMessageS2CPacket packet, CallbackInfo ci) {
+	@Inject(method = "handlePlayerCombatKill", at = @At("HEAD"))
+	private void deathreplay$onDeathMessage(ClientboundPlayerCombatKillPacket packet, CallbackInfo ci) {
 		if (deathreplay$onRenderThread()) {
 			Recorder.onDeathMessage(packet.message(), packet.playerId());
 		}

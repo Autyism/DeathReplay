@@ -3,26 +3,25 @@ package io.github.autyism.deathreplay.replay;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.util.Mth;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EntitySpawnReason;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.InterpolationHandler;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.phys.Vec3;
 import io.github.autyism.deathreplay.DeathReplayClient;
 import io.github.autyism.deathreplay.mixin.DataTrackerAccessor;
 import io.github.autyism.deathreplay.record.EntityAppearance;
 import io.github.autyism.deathreplay.record.EntitySample;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.PositionInterpolator;
-import net.minecraft.entity.SpawnReason;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.item.ItemStack;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Hand;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -37,20 +36,20 @@ final class Puppet {
 	/** True if vanilla glides this entity towards positions it is told (mobs, players, boats...). */
 	private final boolean interpolated;
 	/** The entity's synced data as it is right after construction, indexed by data id. */
-	private final List<DataTracker.SerializedEntry<?>> initialData;
+	private final List<SynchedEntityData.DataValue<?>> initialData;
 	@Nullable
 	private EntityAppearance appliedAppearance;
 	@Nullable
 	private EntitySample lastSample;
 
-	private Puppet(Entity entity, List<DataTracker.SerializedEntry<?>> initialData) {
+	private Puppet(Entity entity, List<SynchedEntityData.DataValue<?>> initialData) {
 		this.entity = entity;
 		this.initialData = initialData;
-		PositionInterpolator interpolator = entity.getInterpolator();
+		InterpolationHandler interpolator = entity.getInterpolation();
 		this.interpolated = interpolator != null;
 		if (interpolator != null) {
 			// Samples arrive every tick, so there is nothing to smooth over several ticks.
-			interpolator.setLerpDuration(1);
+			interpolator.setInterpolationLength(1);
 		}
 	}
 
@@ -59,7 +58,7 @@ final class Puppet {
 	 * if this kind of entity cannot be rebuilt on the client.
 	 */
 	@Nullable
-	static Puppet create(ClientWorld world, EntitySample sample, int puppetId) {
+	static Puppet create(ClientLevel world, EntitySample sample, int puppetId) {
 		EntityAppearance appearance = sample.appearance;
 		Entity entity;
 		try {
@@ -68,24 +67,24 @@ final class Puppet {
 					return null;
 				}
 
-				ClientPlayNetworkHandler handler = MinecraftClient.getInstance().getNetworkHandler();
-				entity = new PuppetPlayerEntity(world, appearance.profile(), handler == null ? null : handler.getPlayerListEntry(appearance.profile().id()));
+				ClientPacketListener handler = Minecraft.getInstance().getConnection();
+				entity = new PuppetPlayerEntity(world, appearance.profile(), handler == null ? null : handler.getPlayerInfo(appearance.profile().id()));
 			} else {
-				entity = appearance.type().create(world, SpawnReason.LOAD);
+				entity = appearance.type().create(world, EntitySpawnReason.LOAD);
 			}
 
 			if (entity == null) {
 				return null;
 			}
 
-			List<DataTracker.SerializedEntry<?>> initialData = new ArrayList<>();
-			for (DataTracker.Entry<?> entry : ((DataTrackerAccessor) entity.getDataTracker()).deathreplay$getEntries()) {
-				initialData.add(entry.toSerialized());
+			List<SynchedEntityData.DataValue<?>> initialData = new ArrayList<>();
+			for (SynchedEntityData.DataItem<?> entry : ((DataTrackerAccessor) entity.getEntityData()).deathreplay$getEntries()) {
+				initialData.add(entry.value());
 			}
 
 			if (appearance.spawnPacket() != null) {
 				// Type-specific spawn data: facing of item frames, the block of a falling block...
-				entity.onSpawnPacket(appearance.spawnPacket());
+				entity.recreateFromPacket(appearance.spawnPacket());
 			}
 
 			if (entity.isRemoved()) {
@@ -94,16 +93,16 @@ final class Puppet {
 			}
 
 			entity.setId(puppetId);
-			entity.setUuid(MathHelper.randomUuid());
-			entity.refreshPositionAndAngles(sample.x, sample.y, sample.z, sample.yaw, sample.pitch);
-			entity.setHeadYaw(sample.headYaw);
-			entity.setBodyYaw(sample.bodyYaw);
+			entity.setUUID(Mth.createInsecureUUID());
+			entity.snapTo(sample.x, sample.y, sample.z, sample.yaw, sample.pitch);
+			entity.setYHeadRot(sample.headYaw);
+			entity.setYBodyRot(sample.bodyYaw);
 			if (entity instanceof LivingEntity living) {
-				living.lastHeadYaw = sample.headYaw;
-				living.lastBodyYaw = sample.bodyYaw;
+				living.yHeadRotO = sample.headYaw;
+				living.yBodyRotO = sample.bodyYaw;
 			}
 
-			entity.setVelocity(sample.velocity());
+			entity.setDeltaMovement(sample.velocity());
 			entity.setOnGround(sample.onGround);
 
 			Puppet puppet = new Puppet(entity, initialData);
@@ -112,7 +111,7 @@ final class Puppet {
 			puppet.lastSample = sample;
 			return puppet;
 		} catch (RuntimeException e) {
-			DeathReplayClient.LOGGER.warn("Could not create a replay puppet for {}", Registries.ENTITY_TYPE.getId(appearance.type()), e);
+			DeathReplayClient.LOGGER.warn("Could not create a replay puppet for {}", BuiltInRegistries.ENTITY_TYPE.getKey(appearance.type()), e);
 			return null;
 		}
 	}
@@ -128,30 +127,30 @@ final class Puppet {
 		}
 
 		Entity entity = this.entity;
-		if (!entity.hasVehicle()) {
+		if (!entity.isPassenger()) {
 			if (this.interpolated) {
-				entity.updateTrackedPositionAndAngles(sample.pos(), sample.yaw, sample.pitch);
-				entity.updateTrackedHeadRotation(sample.headYaw, 1);
-				entity.setVelocity(sample.velocity());
+				entity.moveOrInterpolateTo(sample.pos(), sample.yaw, sample.pitch);
+				entity.lerpHeadTo(sample.headYaw, 1);
+				entity.setDeltaMovement(sample.velocity());
 				entity.setOnGround(sample.onGround);
 			} else {
 				EntitySample shown = this.lastSample != null ? this.lastSample : sample;
-				entity.setPosition(shown.x, shown.y, shown.z);
-				entity.setYaw(shown.yaw);
-				entity.setPitch(shown.pitch);
-				entity.setHeadYaw(shown.headYaw);
-				entity.setVelocity(shown.velocity());
+				entity.setPos(shown.x, shown.y, shown.z);
+				entity.setYRot(shown.yaw);
+				entity.setXRot(shown.pitch);
+				entity.setYHeadRot(shown.headYaw);
+				entity.setDeltaMovement(shown.velocity());
 				entity.setOnGround(shown.onGround);
 			}
 		} else if (this.interpolated) {
 			// A rider is carried by its vehicle; only where it looks is its own.
-			entity.updateTrackedAngles(sample.yaw, sample.pitch);
-			entity.updateTrackedHeadRotation(sample.headYaw, 1);
+			entity.moveOrInterpolateTo(sample.yaw, sample.pitch);
+			entity.lerpHeadTo(sample.headYaw, 1);
 		}
 
 		// A sample taken right after an arm swing started shows the swing at tick 0 (or -1).
 		if (entity instanceof LivingEntity living && sample.handSwinging && sample.handSwingTicks <= 0) {
-			living.swingHand(sample.offHandSwing ? Hand.OFF_HAND : Hand.MAIN_HAND);
+			living.swing(sample.offHandSwing ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
 		}
 
 		this.lastSample = sample;
@@ -163,9 +162,9 @@ final class Puppet {
 	 */
 	void hold() {
 		EntitySample sample = this.lastSample;
-		if (sample != null && !this.interpolated && !this.entity.hasVehicle()) {
-			this.entity.setPosition(sample.x, sample.y, sample.z);
-			this.entity.setVelocity(Vec3d.ZERO);
+		if (sample != null && !this.interpolated && !this.entity.isPassenger()) {
+			this.entity.setPos(sample.x, sample.y, sample.z);
+			this.entity.setDeltaMovement(Vec3.ZERO);
 		}
 	}
 
@@ -174,37 +173,37 @@ final class Puppet {
 		Entity entity = this.entity;
 
 		// Wanted state = the type's initial values, overridden by what was recorded.
-		List<DataTracker.SerializedEntry<?>> wanted = new ArrayList<>(this.initialData);
-		for (DataTracker.SerializedEntry<?> entry : appearance.trackedData()) {
+		List<SynchedEntityData.DataValue<?>> wanted = new ArrayList<>(this.initialData);
+		for (SynchedEntityData.DataValue<?> entry : appearance.trackedData()) {
 			if (entry.id() >= 0 && entry.id() < wanted.size()) {
 				wanted.set(entry.id(), entry);
 			}
 		}
 
 		// Only write what actually differs: writing fires the entity's change callbacks.
-		DataTracker.Entry<?>[] current = ((DataTrackerAccessor) entity.getDataTracker()).deathreplay$getEntries();
-		List<DataTracker.SerializedEntry<?>> changes = new ArrayList<>();
+		SynchedEntityData.DataItem<?>[] current = ((DataTrackerAccessor) entity.getEntityData()).deathreplay$getEntries();
+		List<SynchedEntityData.DataValue<?>> changes = new ArrayList<>();
 		for (int i = 0; i < wanted.size() && i < current.length; i++) {
-			if (!sameValue(current[i].get(), wanted.get(i).value())) {
+			if (!sameValue(current[i].getValue(), wanted.get(i).value())) {
 				changes.add(wanted.get(i));
 			}
 		}
 
 		if (!changes.isEmpty()) {
-			entity.getDataTracker().writeUpdatedEntries(changes);
+			entity.getEntityData().assignValues(changes);
 		}
 
 		if (entity instanceof LivingEntity living && appearance.equipment() != null) {
 			for (EquipmentSlot slot : EquipmentSlot.values()) {
 				ItemStack stack = appearance.equipment()[slot.ordinal()];
-				if (!ItemStack.areEqual(living.getEquippedStack(slot), stack)) {
-					living.equipStack(slot, stack.copy());
+				if (!ItemStack.matches(living.getItemBySlot(slot), stack)) {
+					living.setItemSlot(slot, stack.copy());
 				}
 			}
 		}
 	}
 
 	private static boolean sameValue(Object a, Object b) {
-		return a instanceof ItemStack left && b instanceof ItemStack right ? ItemStack.areEqual(left, right) : Objects.equals(a, b);
+		return a instanceof ItemStack left && b instanceof ItemStack right ? ItemStack.matches(left, right) : Objects.equals(a, b);
 	}
 }

@@ -9,41 +9,41 @@ import java.util.UUID;
 import com.mojang.authlib.GameProfile;
 import io.netty.buffer.Unpooled;
 import net.minecraft.SharedConstants;
-import net.minecraft.block.BlockState;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtElement;
-import net.minecraft.nbt.NbtHelper;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Holder;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtAccounter;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.nbt.NbtSizeTracker;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
-import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
-import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.registry.Registries;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
-import net.minecraft.world.dimension.DimensionType;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.nbt.Tag;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -58,17 +58,17 @@ public final class ReplayFileReader {
 	private ReplayFileReader() {
 	}
 
-	public static Recording read(Path file, DynamicRegistryManager registries) throws IOException {
+	public static Recording read(Path file, RegistryAccess registries) throws IOException {
 		try {
-			NbtCompound root = NbtIo.readCompressed(file, NbtSizeTracker.ofUnlimitedBytes());
-			int format = root.getInt("FormatVersion", 0);
+			CompoundTag root = NbtIo.readCompressed(file, NbtAccounter.unlimitedHeap());
+			int format = root.getIntOr("FormatVersion", 0);
 			if (format != ReplayFileWriter.FORMAT_VERSION) {
 				throw new IOException("replay file format " + format + " is not supported (expected " + ReplayFileWriter.FORMAT_VERSION + ")");
 			}
 
-			String version = root.getString("MinecraftVersion", "");
-			if (!version.equals(SharedConstants.getGameVersion().name())) {
-				throw new IOException("replay was saved by Minecraft " + version + ", this is " + SharedConstants.getGameVersion().name());
+			String version = root.getStringOr("MinecraftVersion", "");
+			if (!version.equals(SharedConstants.getCurrentVersion().name())) {
+				throw new IOException("replay was saved by Minecraft " + version + ", this is " + SharedConstants.getCurrentVersion().name());
 			}
 
 			return parse(root, registries);
@@ -78,8 +78,8 @@ public final class ReplayFileReader {
 		}
 	}
 
-	private static Recording parse(NbtCompound root, DynamicRegistryManager registries) throws IOException {
-		int tickCount = root.getInt("TickCount", 0);
+	private static Recording parse(CompoundTag root, RegistryAccess registries) throws IOException {
+		int tickCount = root.getIntOr("TickCount", 0);
 		if (tickCount <= 0) {
 			throw new IOException("replay file has no ticks");
 		}
@@ -91,27 +91,27 @@ public final class ReplayFileReader {
 			events.add(new ArrayList<>());
 		}
 
-		NbtList entities = root.getListOrEmpty("Entities");
+		ListTag entities = root.getListOrEmpty("Entities");
 		for (int i = 0; i < entities.size(); i++) {
 			readTrack(entities.getCompoundOrEmpty(i), registries, samples);
 		}
 
-		NbtList blockChanges = root.getListOrEmpty("BlockChanges");
+		ListTag blockChanges = root.getListOrEmpty("BlockChanges");
 		for (int i = 0; i < blockChanges.size(); i++) {
-			NbtCompound nbt = blockChanges.getCompoundOrEmpty(i);
-			int tick = nbt.getInt("Tick", -1);
+			CompoundTag nbt = blockChanges.getCompoundOrEmpty(i);
+			int tick = nbt.getIntOr("Tick", -1);
 			if (tick >= 0 && tick < tickCount) {
-				BlockPos pos = new BlockPos(nbt.getInt("X", 0), nbt.getInt("Y", 0), nbt.getInt("Z", 0));
-				BlockState oldState = NbtHelper.toBlockState(registries.getOrThrow(RegistryKeys.BLOCK), nbt.getCompoundOrEmpty("Old"));
-				BlockState newState = NbtHelper.toBlockState(registries.getOrThrow(RegistryKeys.BLOCK), nbt.getCompoundOrEmpty("New"));
+				BlockPos pos = new BlockPos(nbt.getIntOr("X", 0), nbt.getIntOr("Y", 0), nbt.getIntOr("Z", 0));
+				BlockState oldState = NbtUtils.readBlockState(registries.lookupOrThrow(Registries.BLOCK), nbt.getCompoundOrEmpty("Old"));
+				BlockState newState = NbtUtils.readBlockState(registries.lookupOrThrow(Registries.BLOCK), nbt.getCompoundOrEmpty("New"));
 				events.get(tick).add(new RecordedEvent.BlockChange(pos, oldState, newState));
 			}
 		}
 
-		NbtList otherEvents = root.getListOrEmpty("Events");
+		ListTag otherEvents = root.getListOrEmpty("Events");
 		for (int i = 0; i < otherEvents.size(); i++) {
-			NbtCompound nbt = otherEvents.getCompoundOrEmpty(i);
-			int tick = nbt.getInt("Tick", -1);
+			CompoundTag nbt = otherEvents.getCompoundOrEmpty(i);
+			int tick = nbt.getIntOr("Tick", -1);
 			RecordedEvent event = readEvent(nbt, registries);
 			if (event != null && tick >= 0 && tick < tickCount) {
 				events.get(tick).add(event);
@@ -123,61 +123,61 @@ public final class ReplayFileReader {
 			frames.add(new Frame(samples.get(i).toArray(EntitySample[]::new), events.get(i).toArray(RecordedEvent[]::new)));
 		}
 
-		NbtCompound player = root.getCompoundOrEmpty("Player");
-		NbtList deathPos = root.getListOrEmpty("DeathPos");
-		String deathMessage = root.getString("DeathMessage", "");
+		CompoundTag player = root.getCompoundOrEmpty("Player");
+		ListTag deathPos = root.getListOrEmpty("DeathPos");
+		String deathMessage = root.getStringOr("DeathMessage", "");
 		return new Recording(
 			List.copyOf(frames),
-			Math.max(0, Math.min(tickCount - 1, root.getInt("DeathFrame", tickCount - 1))),
-			player.getInt("EntityId", 0),
-			player.getString("Name", ""),
-			UUID.fromString(player.getString("UUID", new UUID(0L, 0L).toString())),
+			Math.max(0, Math.min(tickCount - 1, root.getIntOr("DeathFrame", tickCount - 1))),
+			player.getIntOr("EntityId", 0),
+			player.getStringOr("Name", ""),
+			UUID.fromString(player.getStringOr("UUID", new UUID(0L, 0L).toString())),
 			readSnapshot(root, registries),
-			new Vec3d(deathPos.getDouble(0, 0.0), deathPos.getDouble(1, 0.0), deathPos.getDouble(2, 0.0)),
-			deathMessage.isEmpty() ? null : Text.literal(deathMessage),
-			root.getLong("DeathTimeMillis", 0L)
+			new Vec3(deathPos.getDoubleOr(0, 0.0), deathPos.getDoubleOr(1, 0.0), deathPos.getDoubleOr(2, 0.0)),
+			deathMessage.isEmpty() ? null : Component.literal(deathMessage),
+			root.getLongOr("DeathTimeMillis", 0L)
 		);
 	}
 
-	private static WorldSnapshot readSnapshot(NbtCompound root, DynamicRegistryManager registries) throws IOException {
-		NbtCompound world = root.getCompoundOrEmpty("World");
-		RegistryKey<World> dimension = RegistryKey.of(RegistryKeys.WORLD, Identifier.of(root.getString("Dimension", "minecraft:overworld")));
-		Identifier typeId = Identifier.of(world.getString("DimensionType", "minecraft:overworld"));
-		RegistryEntry<DimensionType> dimensionType = registries.getOrThrow(RegistryKeys.DIMENSION_TYPE)
-			.getOptional(RegistryKey.of(RegistryKeys.DIMENSION_TYPE, typeId))
+	private static WorldSnapshot readSnapshot(CompoundTag root, RegistryAccess registries) throws IOException {
+		CompoundTag world = root.getCompoundOrEmpty("World");
+		ResourceKey<Level> dimension = ResourceKey.create(Registries.DIMENSION, Identifier.parse(root.getStringOr("Dimension", "minecraft:overworld")));
+		Identifier typeId = Identifier.parse(world.getStringOr("DimensionType", "minecraft:overworld"));
+		Holder<DimensionType> dimensionType = registries.lookupOrThrow(Registries.DIMENSION_TYPE)
+			.get(ResourceKey.create(Registries.DIMENSION_TYPE, typeId))
 			.orElseThrow(() -> new IOException("this server has no dimension type " + typeId));
 
-		List<ChunkDataS2CPacket> chunks = new ArrayList<>();
-		NbtList chunkList = root.getListOrEmpty("Chunks");
-		for (NbtElement element : chunkList) {
+		List<ClientboundLevelChunkWithLightPacket> chunks = new ArrayList<>();
+		ListTag chunkList = root.getListOrEmpty("Chunks");
+		for (Tag element : chunkList) {
 			byte[] bytes = element.asByteArray().orElseThrow(() -> new IOException("malformed chunk entry"));
-			chunks.add(decode(ChunkDataS2CPacket.CODEC, bytes, registries));
+			chunks.add(decode(ClientboundLevelChunkWithLightPacket.STREAM_CODEC, bytes, registries));
 		}
 
 		return new WorldSnapshot(
 			dimension,
 			dimensionType,
-			world.getLong("BiomeSeed", 0L),
-			world.getInt("SeaLevel", 63),
-			world.getBoolean("Flat", false),
-			world.getLong("Time", 0L),
-			world.getLong("TimeOfDay", 6000L),
-			world.getFloat("Rain", 0.0F),
-			world.getFloat("Thunder", 0.0F),
-			world.getInt("CenterChunkX", 0),
-			world.getInt("CenterChunkZ", 0),
-			world.getInt("Radius", WorldSnapshot.MAX_RADIUS),
+			world.getLongOr("BiomeSeed", 0L),
+			world.getIntOr("SeaLevel", 63),
+			world.getBooleanOr("Flat", false),
+			world.getLongOr("Time", 0L),
+			world.getLongOr("TimeOfDay", 6000L),
+			world.getFloatOr("Rain", 0.0F),
+			world.getFloatOr("Thunder", 0.0F),
+			world.getIntOr("CenterChunkX", 0),
+			world.getIntOr("CenterChunkZ", 0),
+			world.getIntOr("Radius", WorldSnapshot.MAX_RADIUS),
 			List.copyOf(chunks)
 		);
 	}
 
-	private static void readTrack(NbtCompound track, DynamicRegistryManager registries, List<List<EntitySample>> samples) throws IOException {
-		int entityId = track.getInt("EntityId", 0);
-		EntityType<?> type = Registries.ENTITY_TYPE.get(Identifier.of(track.getString("Type", "minecraft:pig")));
-		UUID uuid = UUID.fromString(track.getString("UUID", new UUID(0L, 0L).toString()));
-		String name = track.getString("Name", "");
+	private static void readTrack(CompoundTag track, RegistryAccess registries, List<List<EntitySample>> samples) throws IOException {
+		int entityId = track.getIntOr("EntityId", 0);
+		EntityType<?> type = BuiltInRegistries.ENTITY_TYPE.getValue(Identifier.parse(track.getStringOr("Type", "minecraft:pig")));
+		UUID uuid = UUID.fromString(track.getStringOr("UUID", new UUID(0L, 0L).toString()));
+		String name = track.getStringOr("Name", "");
 		GameProfile profile = name.isEmpty() ? null : new GameProfile(uuid, name);
-		boolean local = track.getBoolean("Local", false);
+		boolean local = track.getBooleanOr("Local", false);
 
 		int[] ticks = track.getIntArray("Ticks").orElse(new int[0]);
 		long[] pos = track.getLongArray("Pos").orElse(new long[0]);
@@ -192,12 +192,12 @@ public final class ReplayFileReader {
 		}
 
 		// Looks are stored in the order they came into effect.
-		NbtList looks = track.getListOrEmpty("Looks");
+		ListTag looks = track.getListOrEmpty("Looks");
 		int nextLook = 0;
 		EntityAppearance appearance = null;
 		for (int i = 0; i < count; i++) {
 			int tick = ticks[i];
-			while (nextLook < looks.size() && looks.getCompoundOrEmpty(nextLook).getInt("Tick", 0) <= tick) {
+			while (nextLook < looks.size() && looks.getCompoundOrEmpty(nextLook).getIntOr("Tick", 0) <= tick) {
 				appearance = readLook(looks.getCompoundOrEmpty(nextLook), type, uuid, profile, local, registries);
 				nextLook++;
 			}
@@ -226,11 +226,11 @@ public final class ReplayFileReader {
 		}
 	}
 
-	private static EntityAppearance readLook(NbtCompound look, EntityType<?> type, UUID uuid, @Nullable GameProfile profile, boolean local, DynamicRegistryManager registries) {
-		List<DataTracker.SerializedEntry<?>> tracked = look.getByteArray("Tracked")
-			.map(bytes -> decode(EntityTrackerUpdateS2CPacket.CODEC, bytes, registries).trackedValues())
+	private static EntityAppearance readLook(CompoundTag look, EntityType<?> type, UUID uuid, @Nullable GameProfile profile, boolean local, RegistryAccess registries) {
+		List<SynchedEntityData.DataValue<?>> tracked = look.getByteArray("Tracked")
+			.map(bytes -> decode(ClientboundSetEntityDataPacket.STREAM_CODEC, bytes, registries).packedItems())
 			.orElse(List.of());
-		EntitySpawnS2CPacket spawn = look.getByteArray("Spawn").map(bytes -> decode(EntitySpawnS2CPacket.CODEC, bytes, registries)).orElse(null);
+		ClientboundAddEntityPacket spawn = look.getByteArray("Spawn").map(bytes -> decode(ClientboundAddEntityPacket.STREAM_CODEC, bytes, registries)).orElse(null);
 
 		ItemStack[] equipment = null;
 		if (look.contains("Equipment")) {
@@ -240,11 +240,11 @@ public final class ReplayFileReader {
 				equipment[i] = ItemStack.EMPTY;
 			}
 
-			NbtList list = look.getListOrEmpty("Equipment");
+			ListTag list = look.getListOrEmpty("Equipment");
 			for (int i = 0; i < list.size(); i++) {
-				NbtCompound entry = list.getCompoundOrEmpty(i);
-				EquipmentSlot slot = EquipmentSlot.CODEC.byId(entry.getString("Slot", ""));
-				ItemStack stack = ItemStack.CODEC.parse(registries.getOps(NbtOps.INSTANCE), entry.getCompoundOrEmpty("Item")).result().orElse(ItemStack.EMPTY);
+				CompoundTag entry = list.getCompoundOrEmpty(i);
+				EquipmentSlot slot = EquipmentSlot.CODEC.byName(entry.getStringOr("Slot", ""));
+				ItemStack stack = ItemStack.CODEC.parse(registries.createSerializationContext(NbtOps.INSTANCE), entry.getCompoundOrEmpty("Item")).result().orElse(ItemStack.EMPTY);
 				if (slot != null) {
 					equipment[slot.ordinal()] = stack;
 				}
@@ -255,24 +255,24 @@ public final class ReplayFileReader {
 	}
 
 	@Nullable
-	private static RecordedEvent readEvent(NbtCompound nbt, DynamicRegistryManager registries) {
-		String type = nbt.getString("Type", "");
+	private static RecordedEvent readEvent(CompoundTag nbt, RegistryAccess registries) {
+		String type = nbt.getStringOr("Type", "");
 		byte[] packet = nbt.getByteArray("Packet").orElse(null);
 		return switch (type) {
-			case "particle" -> packet == null ? null : new RecordedEvent.Particle(decode(ParticleS2CPacket.CODEC, packet, registries));
-			case "sound" -> packet == null ? null : new RecordedEvent.Sound(decode(PlaySoundS2CPacket.CODEC, packet, registries));
-			case "entity_sound" -> packet == null ? null : new RecordedEvent.EntitySound(decode(PlaySoundFromEntityS2CPacket.CODEC, packet, registries));
-			case "world_event" -> packet == null ? null : new RecordedEvent.WorldEvent(decode(WorldEventS2CPacket.CODEC, packet, registries));
-			case "explosion" -> packet == null ? null : new RecordedEvent.Explosion(decode(ExplosionS2CPacket.CODEC, packet, registries));
-			case "entity_damage" -> packet == null ? null : new RecordedEvent.EntityDamage(decode(EntityDamageS2CPacket.CODEC, packet, registries));
-			case "block_breaking" -> packet == null ? null : new RecordedEvent.BlockBreaking(decode(BlockBreakingProgressS2CPacket.CODEC, packet, registries));
-			case "entity_status" -> new RecordedEvent.EntityStatus(nbt.getInt("EntityId", 0), nbt.getByte("Status", (byte) 0));
-			case "entity_animation" -> new RecordedEvent.EntityAnimation(nbt.getInt("EntityId", 0), nbt.getInt("Animation", 0));
+			case "particle" -> packet == null ? null : new RecordedEvent.Particle(decode(ClientboundLevelParticlesPacket.STREAM_CODEC, packet, registries));
+			case "sound" -> packet == null ? null : new RecordedEvent.Sound(decode(ClientboundSoundPacket.STREAM_CODEC, packet, registries));
+			case "entity_sound" -> packet == null ? null : new RecordedEvent.EntitySound(decode(ClientboundSoundEntityPacket.STREAM_CODEC, packet, registries));
+			case "world_event" -> packet == null ? null : new RecordedEvent.WorldEvent(decode(ClientboundLevelEventPacket.STREAM_CODEC, packet, registries));
+			case "explosion" -> packet == null ? null : new RecordedEvent.Explosion(decode(ClientboundExplodePacket.STREAM_CODEC, packet, registries));
+			case "entity_damage" -> packet == null ? null : new RecordedEvent.EntityDamage(decode(ClientboundDamageEventPacket.STREAM_CODEC, packet, registries));
+			case "block_breaking" -> packet == null ? null : new RecordedEvent.BlockBreaking(decode(ClientboundBlockDestructionPacket.STREAM_CODEC, packet, registries));
+			case "entity_status" -> new RecordedEvent.EntityStatus(nbt.getIntOr("EntityId", 0), nbt.getByteOr("Status", (byte) 0));
+			case "entity_animation" -> new RecordedEvent.EntityAnimation(nbt.getIntOr("EntityId", 0), nbt.getIntOr("Animation", 0));
 			default -> null;
 		};
 	}
 
-	private static <T> T decode(PacketCodec<? super RegistryByteBuf, T> codec, byte[] bytes, DynamicRegistryManager registries) {
-		return codec.decode(new RegistryByteBuf(Unpooled.wrappedBuffer(bytes), registries));
+	private static <T> T decode(StreamCodec<? super RegistryFriendlyByteBuf, T> codec, byte[] bytes, RegistryAccess registries) {
+		return codec.decode(new RegistryFriendlyByteBuf(Unpooled.wrappedBuffer(bytes), registries));
 	}
 }

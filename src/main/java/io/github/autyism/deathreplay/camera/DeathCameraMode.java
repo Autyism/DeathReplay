@@ -1,6 +1,6 @@
 package io.github.autyism.deathreplay.camera;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Camera modes available on the death screen.
@@ -19,8 +19,8 @@ public enum DeathCameraMode {
 		this.translationKey = translationKey;
 	}
 
-	public Text getDisplayName() {
-		return Text.translatable(this.translationKey);
+	public Component getDisplayName() {
+		return Component.translatable(this.translationKey);
 	}
 
 	public DeathCameraMode next() {

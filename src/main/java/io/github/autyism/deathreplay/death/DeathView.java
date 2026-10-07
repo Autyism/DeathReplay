@@ -4,12 +4,12 @@ import io.github.autyism.deathreplay.camera.CameraInput;
 import io.github.autyism.deathreplay.camera.DeathCameraMode;
 import io.github.autyism.deathreplay.camera.DetachedCamera;
 import io.github.autyism.deathreplay.config.DeathReplayConfig;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -40,9 +40,9 @@ public final class DeathView {
 	private static final CameraInput.State SYNTHETIC_INPUT = new CameraInput.State();
 
 	@Nullable
-	private static ClientPlayerEntity decedent;
+	private static LocalPlayer decedent;
 	@Nullable
-	private static ClientWorld world;
+	private static ClientLevel world;
 	private static DeathCameraMode mode = DeathCameraMode.THIRD_PERSON;
 	private static double distance = DEFAULT_DISTANCE;
 	private static double flySpeed = DEFAULT_FLY_SPEED;
@@ -72,26 +72,26 @@ public final class DeathView {
 	// ---------------------------------------------------------------- lifecycle
 
 	/** Called every client tick. Starts and stops the override as the player dies and respawns. */
-	public static void tick(MinecraftClient client) {
-		ClientPlayerEntity player = client.player;
+	public static void tick(Minecraft client) {
+		LocalPlayer player = client.player;
 		if (isActive()) {
 			if (!isStillValid(client)) {
 				deactivate(client);
 			}
-		} else if (player != null && client.world != null && player.isDead() && DeathReplayConfig.get().deathFreeCamera) {
-			activate(player, client.world);
+		} else if (player != null && client.level != null && player.isDeadOrDying() && DeathReplayConfig.get().deathFreeCamera) {
+			activate(player, client.level);
 		}
 	}
 
-	private static boolean isStillValid(MinecraftClient client) {
+	private static boolean isStillValid(Minecraft client) {
 		return client.player == decedent
-			&& client.world == world
+			&& client.level == world
 			&& decedent != null
-			&& decedent.isDead()
+			&& decedent.isDeadOrDying()
 			&& DeathReplayConfig.get().deathFreeCamera;
 	}
 
-	private static void activate(ClientPlayerEntity player, ClientWorld clientWorld) {
+	private static void activate(LocalPlayer player, ClientLevel clientWorld) {
 		decedent = player;
 		world = clientWorld;
 		mode = DeathReplayConfig.get().deathCameraMode;
@@ -100,11 +100,11 @@ public final class DeathView {
 		controlling = false;
 		lastFrameNanos = 0L;
 		// Start behind the direction the player was facing, looking slightly down at the body.
-		CAMERA.setRotation(player.getYaw(), DEFAULT_PITCH);
+		CAMERA.setRotation(player.getYRot(), DEFAULT_PITCH);
 		CAMERA.orbit(clientWorld, player, target(player, 1.0F), distance);
 	}
 
-	private static void deactivate(MinecraftClient client) {
+	private static void deactivate(Minecraft client) {
 		decedent = null;
 		world = null;
 		controlling = false;
@@ -124,7 +124,7 @@ public final class DeathView {
 			return null;
 		}
 
-		MinecraftClient client = MinecraftClient.getInstance();
+		Minecraft client = Minecraft.getInstance();
 		if (!isStillValid(client)) {
 			// Do not wait for the next tick: the camera must be back the moment the player respawns.
 			deactivate(client);
@@ -132,7 +132,7 @@ public final class DeathView {
 		}
 
 		long now = System.nanoTime();
-		double seconds = lastFrameNanos == 0L ? 0.0 : MathHelper.clamp((now - lastFrameNanos) / 1.0e9, 0.0, 0.1);
+		double seconds = lastFrameNanos == 0L ? 0.0 : Mth.clamp((now - lastFrameNanos) / 1.0e9, 0.0, 0.1);
 		lastFrameNanos = now;
 
 		CameraInput.State input = INPUT_STATE;
@@ -144,13 +144,13 @@ public final class DeathView {
 			input.yawDelta = input.pitchDelta = 0.0F;
 		}
 
-		double forward = MathHelper.clamp(input.forward + SYNTHETIC_INPUT.forward, -1.0, 1.0);
-		double strafe = MathHelper.clamp(input.strafe + SYNTHETIC_INPUT.strafe, -1.0, 1.0);
-		double up = MathHelper.clamp(input.up + SYNTHETIC_INPUT.up, -1.0, 1.0);
+		double forward = Mth.clamp(input.forward + SYNTHETIC_INPUT.forward, -1.0, 1.0);
+		double strafe = Mth.clamp(input.strafe + SYNTHETIC_INPUT.strafe, -1.0, 1.0);
+		double up = Mth.clamp(input.up + SYNTHETIC_INPUT.up, -1.0, 1.0);
 		float yawDelta = input.yawDelta + SYNTHETIC_INPUT.yawDelta * (float) seconds;
 		float pitchDelta = input.pitchDelta + SYNTHETIC_INPUT.pitchDelta * (float) seconds;
 
-		Vec3d target = target(decedent, tickProgress);
+		Vec3 target = target(decedent, tickProgress);
 		switch (mode) {
 			case THIRD_PERSON -> {
 				CAMERA.rotate(yawDelta, pitchDelta);
@@ -170,8 +170,8 @@ public final class DeathView {
 		return CAMERA;
 	}
 
-	private static Vec3d target(ClientPlayerEntity player, float tickProgress) {
-		return player.getLerpedPos(tickProgress).add(0.0, TARGET_HEIGHT, 0.0);
+	private static Vec3 target(LocalPlayer player, float tickProgress) {
+		return player.getPosition(tickProgress).add(0.0, TARGET_HEIGHT, 0.0);
 	}
 
 	// ---------------------------------------------------------------- controls
@@ -187,20 +187,20 @@ public final class DeathView {
 	/** Mouse wheel: leash length in the two orbiting modes, flight speed in free mode. */
 	public static void scroll(double amount) {
 		if (mode == DeathCameraMode.FREE) {
-			flySpeed = MathHelper.clamp(flySpeed * Math.pow(1.2, amount), MIN_FLY_SPEED, MAX_FLY_SPEED);
+			flySpeed = Mth.clamp(flySpeed * Math.pow(1.2, amount), MIN_FLY_SPEED, MAX_FLY_SPEED);
 		} else {
-			distance = MathHelper.clamp(distance * Math.pow(0.85, amount), MIN_DISTANCE, MAX_DISTANCE);
+			distance = Mth.clamp(distance * Math.pow(0.85, amount), MIN_DISTANCE, MAX_DISTANCE);
 		}
 	}
 
 	/** Opens the interactive view (mouse-look, WASD) on top of the death screen. */
-	public static void openSpectate(MinecraftClient client) {
-		if (isActive() && client.currentScreen instanceof DeathScreen deathScreen) {
+	public static void openSpectate(Minecraft client) {
+		if (isActive() && client.screen instanceof DeathScreen deathScreen) {
 			client.setScreen(new DeathSpectateScreen(deathScreen));
 		}
 	}
 
-	static void setControlling(MinecraftClient client, boolean value) {
+	static void setControlling(Minecraft client, boolean value) {
 		controlling = value && isActive();
 		if (controlling) {
 			INPUT.grabMouse(client);
@@ -209,7 +209,7 @@ public final class DeathView {
 		}
 	}
 
-	static void regrabMouse(MinecraftClient client) {
+	static void regrabMouse(Minecraft client) {
 		if (controlling) {
 			INPUT.grabMouse(client);
 		}

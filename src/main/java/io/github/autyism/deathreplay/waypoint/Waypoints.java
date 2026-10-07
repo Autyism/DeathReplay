@@ -23,21 +23,21 @@ import com.google.gson.reflect.TypeToken;
 import io.github.autyism.deathreplay.DeathReplayClient;
 import io.github.autyism.deathreplay.camera.DetachedCamera;
 import net.fabricmc.loader.api.FabricLoader;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.network.ServerInfo;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.text.Text;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.util.math.Vec3i;
-import net.minecraft.world.RaycastContext;
-import net.minecraft.world.World;
-import net.minecraft.world.waypoint.TrackedWaypoint;
-import net.minecraft.world.waypoint.Waypoint;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.client.multiplayer.ServerData;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Vec3i;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.ClipContext;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
+import net.minecraft.world.waypoints.TrackedWaypoint;
+import net.minecraft.world.waypoints.Waypoint;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -68,8 +68,8 @@ public final class Waypoints {
 		public int z;
 		public long createdMillis;
 
-		public Vec3d center() {
-			return new Vec3d(this.x + 0.5, this.y + 0.5, this.z + 0.5);
+		public Vec3 center() {
+			return new Vec3(this.x + 0.5, this.y + 0.5, this.z + 0.5);
 		}
 
 		public BlockPos pos() {
@@ -86,7 +86,7 @@ public final class Waypoints {
 	/** The locator bar entries this class has added, and the connection they were added to. */
 	private static final Set<UUID> ON_LOCATOR_BAR = new HashSet<>();
 	@Nullable
-	private static ClientPlayNetworkHandler locatorBarOwner;
+	private static ClientPacketListener locatorBarOwner;
 
 	private Waypoints() {
 	}
@@ -94,31 +94,31 @@ public final class Waypoints {
 	// ---------------------------------------------------------------- queries
 
 	/** Markers of the world the client is in (all dimensions). Empty when not in a world. */
-	public static List<Marker> current(MinecraftClient client) {
+	public static List<Marker> current(Minecraft client) {
 		String key = worldKey(client);
 		return key == null ? List.of() : List.copyOf(load().getOrDefault(key, List.of()));
 	}
 
 	/** Markers of the current world that lie in {@code dimension}. */
-	public static List<Marker> inDimension(MinecraftClient client, RegistryKey<World> dimension) {
-		String id = dimension.getValue().toString();
+	public static List<Marker> inDimension(Minecraft client, ResourceKey<Level> dimension) {
+		String id = dimension.identifier().toString();
 		return current(client).stream().filter(marker -> marker.dimension.equals(id)).toList();
 	}
 
 	/** Identifies "this world" across sessions: the server address, or the save name. */
 	@Nullable
-	private static String worldKey(MinecraftClient client) {
-		if (client.world == null) {
+	private static String worldKey(Minecraft client) {
+		if (client.level == null) {
 			return null;
 		}
 
-		ServerInfo server = client.getCurrentServerEntry();
+		ServerData server = client.getCurrentServer();
 		if (server != null) {
-			return "server:" + server.address;
+			return "server:" + server.ip;
 		}
 
-		if (client.getServer() != null) {
-			return "save:" + client.getServer().getSaveProperties().getLevelName();
+		if (client.getSingleplayerServer() != null) {
+			return "save:" + client.getSingleplayerServer().getWorldData().getLevelName();
 		}
 
 		return "unknown";
@@ -131,8 +131,8 @@ public final class Waypoints {
 	 * line of sight, or the camera's own position if it looks at nothing within reach.
 	 */
 	@Nullable
-	public static Marker addFromCamera(MinecraftClient client, World world, DetachedCamera camera) {
-		return addAlongRay(client, world, camera.getPos(), Vec3d.fromPolar(camera.getPitch(), camera.getYaw()));
+	public static Marker addFromCamera(Minecraft client, Level world, DetachedCamera camera) {
+		return addAlongRay(client, world, camera.getPos(), Vec3.directionFromRotation(camera.getPitch(), camera.getYaw()));
 	}
 
 	/**
@@ -140,26 +140,26 @@ public final class Waypoints {
 	 * (left / bottom) to 1 (right / top); 0, 0 is the centre, where the camera points.
 	 */
 	@Nullable
-	public static Marker addFromCamera(MinecraftClient client, World world, DetachedCamera camera, double screenX, double screenY) {
-		Vec3d forward = Vec3d.fromPolar(camera.getPitch(), camera.getYaw());
-		Vec3d right = forward.crossProduct(new Vec3d(0.0, 1.0, 0.0)).normalize();
-		Vec3d up = right.crossProduct(forward);
-		double halfHeight = Math.tan(Math.toRadians(client.options.getFov().getValue()) / 2.0);
-		double halfWidth = halfHeight * client.getWindow().getFramebufferWidth() / client.getWindow().getFramebufferHeight();
-		Vec3d direction = forward.add(right.multiply(screenX * halfWidth)).add(up.multiply(screenY * halfHeight)).normalize();
+	public static Marker addFromCamera(Minecraft client, Level world, DetachedCamera camera, double screenX, double screenY) {
+		Vec3 forward = Vec3.directionFromRotation(camera.getPitch(), camera.getYaw());
+		Vec3 right = forward.cross(new Vec3(0.0, 1.0, 0.0)).normalize();
+		Vec3 up = right.cross(forward);
+		double halfHeight = Math.tan(Math.toRadians(client.options.fov().get()) / 2.0);
+		double halfWidth = halfHeight * client.getWindow().getWidth() / client.getWindow().getHeight();
+		Vec3 direction = forward.add(right.scale(screenX * halfWidth)).add(up.scale(screenY * halfHeight)).normalize();
 		return addAlongRay(client, world, camera.getPos(), direction);
 	}
 
 	@Nullable
-	private static Marker addAlongRay(MinecraftClient client, World world, Vec3d from, Vec3d direction) {
-		Vec3d to = from.add(direction.multiply(REACH));
-		BlockHitResult hit = world.raycast(new RaycastContext(from, to, RaycastContext.ShapeType.OUTLINE, RaycastContext.FluidHandling.NONE, ShapeContext.absent()));
-		BlockPos pos = hit.getType() == HitResult.Type.BLOCK ? hit.getBlockPos().offset(hit.getSide()) : BlockPos.ofFloored(from);
-		return add(client, world.getRegistryKey(), pos);
+	private static Marker addAlongRay(Minecraft client, Level world, Vec3 from, Vec3 direction) {
+		Vec3 to = from.add(direction.scale(REACH));
+		BlockHitResult hit = world.clip(new ClipContext(from, to, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, CollisionContext.empty()));
+		BlockPos pos = hit.getType() == HitResult.Type.BLOCK ? hit.getBlockPos().relative(hit.getDirection()) : BlockPos.containing(from);
+		return add(client, world.dimension(), pos);
 	}
 
 	@Nullable
-	public static Marker add(MinecraftClient client, RegistryKey<World> dimension, BlockPos pos) {
+	public static Marker add(Minecraft client, ResourceKey<Level> dimension, BlockPos pos) {
 		String key = worldKey(client);
 		if (key == null) {
 			return null;
@@ -168,8 +168,8 @@ public final class Waypoints {
 		List<Marker> list = load().computeIfAbsent(key, k -> new ArrayList<>());
 		Marker marker = new Marker();
 		marker.id = UUID.randomUUID().toString();
-		marker.name = Text.translatable("deathreplay.waypoint.name", nextNumber(list)).getString();
-		marker.dimension = dimension.getValue().toString();
+		marker.name = Component.translatable("deathreplay.waypoint.name", nextNumber(list)).getString();
+		marker.dimension = dimension.identifier().toString();
 		marker.x = pos.getX();
 		marker.y = pos.getY();
 		marker.z = pos.getZ();
@@ -189,14 +189,14 @@ public final class Waypoints {
 		}
 	}
 
-	public static void remove(MinecraftClient client, Marker marker) {
+	public static void remove(Minecraft client, Marker marker) {
 		String key = worldKey(client);
 		if (key != null && load().getOrDefault(key, new ArrayList<>()).removeIf(other -> other.id.equals(marker.id))) {
 			save();
 		}
 	}
 
-	public static void clear(MinecraftClient client) {
+	public static void clear(Minecraft client) {
 		String key = worldKey(client);
 		if (key != null && load().remove(key) != null) {
 			save();
@@ -209,26 +209,26 @@ public final class Waypoints {
 	 * Called every client tick: keeps the locator bar showing exactly the markers of the
 	 * dimension the player is in.
 	 */
-	public static void tick(MinecraftClient client) {
-		ClientPlayNetworkHandler handler = client.getNetworkHandler();
+	public static void tick(Minecraft client) {
+		ClientPacketListener handler = client.getConnection();
 		if (handler != locatorBarOwner) {
 			// New connection: its locator bar starts empty.
 			ON_LOCATOR_BAR.clear();
 			locatorBarOwner = handler;
 		}
 
-		if (handler == null || client.world == null) {
+		if (handler == null || client.level == null) {
 			return;
 		}
 
 		Set<UUID> wanted = new HashSet<>();
-		for (Marker marker : inDimension(client, client.world.getRegistryKey())) {
+		for (Marker marker : inDimension(client, client.level.dimension())) {
 			UUID uuid = marker.uuid();
 			wanted.add(uuid);
 			if (ON_LOCATOR_BAR.add(uuid)) {
-				Waypoint.Config config = new Waypoint.Config();
+				Waypoint.Icon config = new Waypoint.Icon();
 				config.color = Optional.of(COLOR);
-				handler.getWaypointHandler().onTrack(TrackedWaypoint.ofPos(uuid, config, new Vec3i(marker.x, marker.y, marker.z)));
+				handler.getWaypointManager().trackWaypoint(TrackedWaypoint.setPosition(uuid, config, new Vec3i(marker.x, marker.y, marker.z)));
 			}
 		}
 
@@ -237,7 +237,7 @@ public final class Waypoints {
 				return false;
 			}
 
-			handler.getWaypointHandler().onUntrack(TrackedWaypoint.empty(uuid));
+			handler.getWaypointManager().untrackWaypoint(TrackedWaypoint.empty(uuid));
 			return true;
 		});
 	}

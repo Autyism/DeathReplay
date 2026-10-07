@@ -2,7 +2,7 @@ package io.github.autyism.deathreplay.mixin;
 
 import com.llamalad7.mixinextras.injector.ModifyExpressionValue;
 import io.github.autyism.deathreplay.camera.CameraOverride;
-import net.minecraft.client.render.WorldRenderer;
+import net.minecraft.client.renderer.LevelRenderer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 
@@ -12,11 +12,11 @@ import org.spongepowered.asm.mixin.injection.At;
  * hiding the chunk sections "behind" it. Without this, caves seen from inside the rock are
  * drawn only partly or not at all.
  */
-@Mixin(WorldRenderer.class)
+@Mixin(LevelRenderer.class)
 public abstract class WorldRendererMixin {
 	@ModifyExpressionValue(
-		method = "render",
-		at = @At(value = "INVOKE", target = "Lnet/minecraft/client/network/ClientPlayerEntity;isSpectator()Z")
+		method = "renderLevel",
+		at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;isSpectator()Z")
 	)
 	private boolean deathreplay$cullLikeASpectator(boolean original) {
 		return original || CameraOverride.isActive();

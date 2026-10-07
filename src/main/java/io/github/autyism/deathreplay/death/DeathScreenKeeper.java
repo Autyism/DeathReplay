@@ -1,9 +1,9 @@
 package io.github.autyism.deathreplay.death;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.network.ClientPlayerEntity;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.player.LocalPlayer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -17,13 +17,13 @@ public final class DeathScreenKeeper {
 	@Nullable
 	private static DeathScreen screen;
 	@Nullable
-	private static ClientPlayerEntity player;
+	private static LocalPlayer player;
 
 	private DeathScreenKeeper() {
 	}
 
 	/** Called when a death screen is shown. The first one of a death is the one with the message. */
-	static void remember(DeathScreen deathScreen, @Nullable ClientPlayerEntity deadPlayer) {
+	static void remember(DeathScreen deathScreen, @Nullable LocalPlayer deadPlayer) {
 		if (deadPlayer != null && deadPlayer != player) {
 			screen = deathScreen;
 			player = deadPlayer;
@@ -35,18 +35,18 @@ public final class DeathScreenKeeper {
 	 * ({@code next == null} while dead), returns the remembered one instead.
 	 */
 	@Nullable
-	public static Screen replace(MinecraftClient client, @Nullable Screen next) {
+	public static Screen replace(Minecraft client, @Nullable Screen next) {
 		if (screen == null) {
 			return next;
 		}
 
-		if (client.player != player || client.world == null) {
+		if (client.player != player || client.level == null) {
 			// Respawned or left: that death is over.
 			screen = null;
 			player = null;
 			return next;
 		}
 
-		return next == null && player.isDead() ? screen : next;
+		return next == null && player.isDeadOrDying() ? screen : next;
 	}
 }

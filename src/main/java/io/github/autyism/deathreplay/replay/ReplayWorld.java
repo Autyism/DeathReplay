@@ -3,16 +3,16 @@ package io.github.autyism.deathreplay.replay;
 import io.github.autyism.deathreplay.mixin.ClientPlayNetworkHandlerAccessor;
 import io.github.autyism.deathreplay.record.Recording;
 import io.github.autyism.deathreplay.record.WorldSnapshot;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayNetworkHandler;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.network.packet.s2c.play.ChunkData;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.util.math.ChunkSectionPos;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.core.SectionPos;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkPacketData;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
 import net.minecraft.world.Difficulty;
-import net.minecraft.world.chunk.ChunkSection;
-import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.chunk.light.LightingProvider;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.lighting.LevelLightEngine;
 
 /**
  * Builds the stage a replay is played on: a client-side world that holds nothing but the
@@ -30,30 +30,30 @@ final class ReplayWorld {
 	private ReplayWorld() {
 	}
 
-	static ClientWorld create(MinecraftClient client, Recording recording) {
-		ClientPlayNetworkHandler handler = client.getNetworkHandler();
+	static ClientLevel create(Minecraft client, Recording recording) {
+		ClientPacketListener handler = client.getConnection();
 		if (handler == null) {
 			throw new IllegalStateException("not connected");
 		}
 
 		WorldSnapshot snapshot = recording.snapshot();
-		ClientWorld.Properties properties = new ClientWorld.Properties(Difficulty.NORMAL, false, snapshot.flat());
-		ClientWorld world = new ClientWorld(
+		ClientLevel.ClientLevelData properties = new ClientLevel.ClientLevelData(Difficulty.NORMAL, false, snapshot.flat());
+		ClientLevel world = new ClientLevel(
 			handler,
 			properties,
 			snapshot.dimension(),
 			snapshot.dimensionType(),
 			snapshot.radius() + 2,
 			SIMULATION_DISTANCE,
-			client.worldRenderer,
+			client.levelRenderer,
 			false,
 			snapshot.biomeSeed(),
 			snapshot.seaLevel()
 		);
-		world.getChunkManager().setChunkMapCenter(snapshot.centerChunkX(), snapshot.centerChunkZ());
-		world.setTime(snapshot.time(), snapshot.timeOfDay(), false);
-		world.setRainGradient(snapshot.rainGradient());
-		world.setThunderGradient(snapshot.thunderGradient());
+		world.getChunkSource().updateViewCenter(snapshot.centerChunkX(), snapshot.centerChunkZ());
+		world.setTimeFromServer(snapshot.time(), snapshot.timeOfDay(), false);
+		world.setRainLevel(snapshot.rainGradient());
+		world.setThunderLevel(snapshot.thunderGradient());
 
 		// The same steps the client takes for a chunk packet from the server, through the same
 		// methods. That matters: renderer mods such as Sodium keep their own list of chunks that
@@ -62,27 +62,27 @@ final class ReplayWorld {
 		// few milliseconds this takes. Everything here runs on the render thread, where packets
 		// are handled too, so no packet can be applied to the wrong world in between.
 		ClientPlayNetworkHandlerAccessor access = (ClientPlayNetworkHandlerAccessor) handler;
-		ClientWorld realWorld = access.deathreplay$getWorld();
+		ClientLevel realWorld = access.deathreplay$getWorld();
 		access.deathreplay$setWorld(world);
 		try {
-			LightingProvider light = world.getChunkManager().getLightingProvider();
-			for (ChunkDataS2CPacket packet : snapshot.chunks()) {
-				int x = packet.getChunkX();
-				int z = packet.getChunkZ();
-				ChunkData data = packet.getChunkData();
-				WorldChunk chunk = world.getChunkManager().loadChunkFromPacket(x, z, data.getSectionsDataBuf(), data.getHeightmap(), data.getBlockEntities(x, z));
+			LevelLightEngine light = world.getChunkSource().getLightEngine();
+			for (ClientboundLevelChunkWithLightPacket packet : snapshot.chunks()) {
+				int x = packet.getX();
+				int z = packet.getZ();
+				ClientboundLevelChunkPacketData data = packet.getChunkData();
+				LevelChunk chunk = world.getChunkSource().replaceWithPacketData(x, z, data.getReadBuffer(), data.getHeightmaps(), data.getBlockEntitiesTagsConsumer(x, z));
 				if (chunk == null) {
 					continue;
 				}
 
 				access.deathreplay$readLightData(x, z, packet.getLightData(), false);
-				ChunkSection[] sections = chunk.getSectionArray();
+				LevelChunkSection[] sections = chunk.getSections();
 				for (int i = 0; i < sections.length; i++) {
-					light.setSectionStatus(ChunkSectionPos.from(chunk.getPos(), world.sectionIndexToCoord(i)), sections[i].isEmpty());
+					light.updateSectionStatus(SectionPos.of(chunk.getPos(), world.getSectionYFromSectionIndex(i)), sections[i].hasOnlyAir());
 				}
 			}
 
-			light.doLightUpdates();
+			light.runLightUpdates();
 		} finally {
 			access.deathreplay$setWorld(realWorld);
 		}

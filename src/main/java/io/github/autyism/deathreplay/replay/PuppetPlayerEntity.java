@@ -1,9 +1,9 @@
 package io.github.autyism.deathreplay.replay;
 
 import com.mojang.authlib.GameProfile;
-import net.minecraft.client.network.OtherClientPlayerEntity;
-import net.minecraft.client.network.PlayerListEntry;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.multiplayer.PlayerInfo;
+import net.minecraft.client.player.RemotePlayer;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -13,18 +13,18 @@ import org.jetbrains.annotations.Nullable;
  * skin is looked up by UUID. This class pins the tab-list entry of the real player so the
  * puppet keeps that player's skin.
  */
-public class PuppetPlayerEntity extends OtherClientPlayerEntity {
+public class PuppetPlayerEntity extends RemotePlayer {
 	@Nullable
-	private final PlayerListEntry listEntry;
+	private final PlayerInfo listEntry;
 
-	public PuppetPlayerEntity(ClientWorld world, GameProfile profile, @Nullable PlayerListEntry listEntry) {
+	public PuppetPlayerEntity(ClientLevel world, GameProfile profile, @Nullable PlayerInfo listEntry) {
 		super(world, profile);
 		this.listEntry = listEntry;
 	}
 
 	@Nullable
 	@Override
-	protected PlayerListEntry getPlayerListEntry() {
+	protected PlayerInfo getPlayerInfo() {
 		return this.listEntry;
 	}
 }

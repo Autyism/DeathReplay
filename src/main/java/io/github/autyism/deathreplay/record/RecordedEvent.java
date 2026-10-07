@@ -1,14 +1,14 @@
 package io.github.autyism.deathreplay.record;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
-import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
-import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
-import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * Something that happened during one tick, other than entities moving: a block changed, or
@@ -22,20 +22,20 @@ public sealed interface RecordedEvent {
 	record BlockChange(BlockPos pos, BlockState oldState, BlockState newState) implements RecordedEvent {
 	}
 
-	record Particle(ParticleS2CPacket packet) implements RecordedEvent {
+	record Particle(ClientboundLevelParticlesPacket packet) implements RecordedEvent {
 	}
 
-	record Sound(PlaySoundS2CPacket packet) implements RecordedEvent {
+	record Sound(ClientboundSoundPacket packet) implements RecordedEvent {
 	}
 
-	record EntitySound(PlaySoundFromEntityS2CPacket packet) implements RecordedEvent {
+	record EntitySound(ClientboundSoundEntityPacket packet) implements RecordedEvent {
 	}
 
 	/** Bundled sound + particle effects such as block breaking, potion splashes, door sounds. */
-	record WorldEvent(WorldEventS2CPacket packet) implements RecordedEvent {
+	record WorldEvent(ClientboundLevelEventPacket packet) implements RecordedEvent {
 	}
 
-	record Explosion(ExplosionS2CPacket packet) implements RecordedEvent {
+	record Explosion(ClientboundExplodePacket packet) implements RecordedEvent {
 	}
 
 	/** Entity status byte: death poof, totem, hurt animations of specific mobs, etc. */
@@ -47,10 +47,10 @@ public sealed interface RecordedEvent {
 	}
 
 	/** An entity was hurt: red flash, hurt sound. */
-	record EntityDamage(EntityDamageS2CPacket packet) implements RecordedEvent {
+	record EntityDamage(ClientboundDamageEventPacket packet) implements RecordedEvent {
 	}
 
 	/** Cracks on a block somebody else is mining. */
-	record BlockBreaking(BlockBreakingProgressS2CPacket packet) implements RecordedEvent {
+	record BlockBreaking(ClientboundBlockDestructionPacket packet) implements RecordedEvent {
 	}
 }

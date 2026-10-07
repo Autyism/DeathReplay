@@ -1,6 +1,6 @@
 package io.github.autyism.deathreplay.replay;
 
-import net.minecraft.text.Text;
+import net.minecraft.network.chat.Component;
 
 /**
  * Camera modes of the replay.
@@ -19,8 +19,8 @@ public enum ReplayView {
 		this.translationKey = translationKey;
 	}
 
-	public Text getDisplayName() {
-		return Text.translatable(this.translationKey);
+	public Component getDisplayName() {
+		return Component.translatable(this.translationKey);
 	}
 
 	public ReplayView next() {

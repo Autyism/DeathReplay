@@ -4,9 +4,9 @@ import io.github.autyism.deathreplay.death.DeathSpectateScreen;
 import io.github.autyism.deathreplay.death.DeathView;
 import io.github.autyism.deathreplay.replay.Replay;
 import io.github.autyism.deathreplay.replay.ReplayScreen;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -24,7 +24,7 @@ public final class CameraOverride {
 
 	/** The replay's stage while playback runs, otherwise {@code null}. See {@link Replay#getStage()}. */
 	@Nullable
-	public static ClientWorld getStage() {
+	public static ClientLevel getStage() {
 		return Replay.getStage();
 	}
 
@@ -34,7 +34,7 @@ public final class CameraOverride {
 	 * (Not done through the F1 "hide HUD" option: that would also hide entity name tags.)
 	 */
 	public static boolean hidesHud() {
-		Screen screen = MinecraftClient.getInstance().currentScreen;
+		Screen screen = Minecraft.getInstance().screen;
 		return screen instanceof ReplayScreen || screen instanceof DeathSpectateScreen;
 	}
 

@@ -2,12 +2,11 @@ package io.github.autyism.deathreplay.record;
 
 import java.util.List;
 import java.util.UUID;
-
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.world.entity.EntityType;
+import net.minecraft.world.item.ItemStack;
 import com.mojang.authlib.GameProfile;
-import net.minecraft.entity.EntityType;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -33,8 +32,8 @@ public record EntityAppearance(
 	UUID uuid,
 	@Nullable GameProfile profile,
 	boolean localPlayer,
-	@Nullable EntitySpawnS2CPacket spawnPacket,
-	List<DataTracker.SerializedEntry<?>> trackedData,
+	@Nullable ClientboundAddEntityPacket spawnPacket,
+	List<SynchedEntityData.DataValue<?>> trackedData,
 	ItemStack @Nullable [] equipment
 ) {
 }

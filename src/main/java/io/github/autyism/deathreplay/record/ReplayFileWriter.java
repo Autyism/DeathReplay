@@ -18,32 +18,32 @@ import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.LongArrayList;
 import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.SharedConstants;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NbtByteArray;
-import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtDouble;
-import net.minecraft.nbt.NbtHelper;
+import net.minecraft.client.Minecraft;
+import net.minecraft.core.RegistryAccess;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.nbt.ByteArrayTag;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.DoubleTag;
+import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtIo;
-import net.minecraft.nbt.NbtList;
 import net.minecraft.nbt.NbtOps;
-import net.minecraft.network.RegistryByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.s2c.play.BlockBreakingProgressS2CPacket;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityDamageS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntityTrackerUpdateS2CPacket;
-import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
-import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
-import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
-import net.minecraft.registry.DynamicRegistryManager;
-import net.minecraft.registry.Registries;
-import net.minecraft.text.Text;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.network.RegistryFriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.codec.StreamCodec;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundBlockDestructionPacket;
+import net.minecraft.network.protocol.game.ClientboundDamageEventPacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSetEntityDataPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
 import net.minecraft.util.Util;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -107,8 +107,8 @@ public final class ReplayFileWriter {
 		return savingRecording == recording;
 	}
 
-	public static Path directory(MinecraftClient client) {
-		return client.runDirectory.toPath().resolve(DIRECTORY);
+	public static Path directory(Minecraft client) {
+		return client.gameDirectory.toPath().resolve(DIRECTORY);
 	}
 
 	/**
@@ -116,8 +116,8 @@ public final class ReplayFileWriter {
 	 * registries, then compresses and writes on the IO pool. Completes with the file path, or
 	 * with {@code null} if anything went wrong (the reason is logged).
 	 */
-	public static CompletableFuture<@Nullable Path> saveAsync(MinecraftClient client, Recording recording, DynamicRegistryManager registries) {
-		NbtCompound root;
+	public static CompletableFuture<@Nullable Path> saveAsync(Minecraft client, Recording recording, RegistryAccess registries) {
+		CompoundTag root;
 		try {
 			root = toNbt(recording, registries);
 		} catch (RuntimeException e) {
@@ -147,53 +147,53 @@ public final class ReplayFileWriter {
 			} finally {
 				savingRecording = null;
 			}
-		}, Util.getIoWorkerExecutor());
+		}, Util.ioPool());
 	}
 
 	/** Saves {@code recording} and tells the player in chat how it went. For the Save buttons. */
-	public static void saveAndAnnounce(MinecraftClient client, Recording recording) {
-		if (client.world == null) {
+	public static void saveAndAnnounce(Minecraft client, Recording recording) {
+		if (client.level == null) {
 			return;
 		}
 
-		saveAsync(client, recording, client.world.getRegistryManager()).thenAcceptAsync(file -> {
+		saveAsync(client, recording, client.level.registryAccess()).thenAcceptAsync(file -> {
 			if (client.player != null) {
-				client.player.sendMessage(file != null
-					? Text.translatable("deathreplay.message.saved", file.getFileName().toString())
-					: Text.translatable("deathreplay.message.save_failed"), false);
+				client.player.displayClientMessage(file != null
+					? Component.translatable("deathreplay.message.saved", file.getFileName().toString())
+					: Component.translatable("deathreplay.message.save_failed"), false);
 			}
 		}, client);
 	}
 
 	// ---------------------------------------------------------------- serialization
 
-	private static NbtCompound toNbt(Recording recording, DynamicRegistryManager registries) {
-		NbtCompound root = new NbtCompound();
+	private static CompoundTag toNbt(Recording recording, RegistryAccess registries) {
+		CompoundTag root = new CompoundTag();
 		root.putInt("FormatVersion", FORMAT_VERSION);
 		root.putString("ModVersion", FabricLoader.getInstance().getModContainer(DeathReplayClient.MOD_ID)
 			.map(mod -> mod.getMetadata().getVersion().getFriendlyString()).orElse("unknown"));
-		root.putString("MinecraftVersion", SharedConstants.getGameVersion().name());
-		root.putInt("DataVersion", SharedConstants.getGameVersion().dataVersion().id());
+		root.putString("MinecraftVersion", SharedConstants.getCurrentVersion().name());
+		root.putInt("DataVersion", SharedConstants.getCurrentVersion().dataVersion().version());
 		root.putLong("DeathTimeMillis", recording.deathTimeMillis());
-		root.putString("Dimension", recording.dimension().getValue().toString());
-		NbtList deathPos = new NbtList();
-		deathPos.add(NbtDouble.of(recording.deathPos().x));
-		deathPos.add(NbtDouble.of(recording.deathPos().y));
-		deathPos.add(NbtDouble.of(recording.deathPos().z));
+		root.putString("Dimension", recording.dimension().identifier().toString());
+		ListTag deathPos = new ListTag();
+		deathPos.add(DoubleTag.valueOf(recording.deathPos().x));
+		deathPos.add(DoubleTag.valueOf(recording.deathPos().y));
+		deathPos.add(DoubleTag.valueOf(recording.deathPos().z));
 		root.put("DeathPos", deathPos);
 		root.putString("DeathMessage", recording.deathMessage() == null ? "" : recording.deathMessage().getString());
 		root.putInt("DeathFrame", recording.deathFrame());
 		root.putInt("TickCount", recording.tickCount());
 
-		NbtCompound player = new NbtCompound();
+		CompoundTag player = new CompoundTag();
 		player.putString("Name", recording.playerName());
 		player.putString("UUID", recording.playerUuid().toString());
 		player.putInt("EntityId", recording.playerEntityId());
 		root.put("Player", player);
 
 		WorldSnapshot snapshot = recording.snapshot();
-		NbtCompound world = new NbtCompound();
-		world.putString("DimensionType", snapshot.dimensionType().getKey().map(key -> key.getValue().toString()).orElse("minecraft:overworld"));
+		CompoundTag world = new CompoundTag();
+		world.putString("DimensionType", snapshot.dimensionType().unwrapKey().map(key -> key.identifier().toString()).orElse("minecraft:overworld"));
 		world.putLong("BiomeSeed", snapshot.biomeSeed());
 		world.putInt("SeaLevel", snapshot.seaLevel());
 		world.putBoolean("Flat", snapshot.flat());
@@ -206,19 +206,19 @@ public final class ReplayFileWriter {
 		world.putInt("Radius", snapshot.radius());
 		root.put("World", world);
 
-		NbtList chunks = new NbtList();
-		for (ChunkDataS2CPacket chunk : snapshot.chunks()) {
-			byte[] bytes = encode(ChunkDataS2CPacket.CODEC, chunk, registries);
+		ListTag chunks = new ListTag();
+		for (ClientboundLevelChunkWithLightPacket chunk : snapshot.chunks()) {
+			byte[] bytes = encode(ClientboundLevelChunkWithLightPacket.STREAM_CODEC, chunk, registries);
 			if (bytes != null) {
-				chunks.add(new NbtByteArray(bytes));
+				chunks.add(new ByteArrayTag(bytes));
 			}
 		}
 
 		root.put("Chunks", chunks);
 
 		Map<Integer, Track> tracks = new LinkedHashMap<>();
-		NbtList blockChanges = new NbtList();
-		NbtList events = new NbtList();
+		ListTag blockChanges = new ListTag();
+		ListTag events = new ListTag();
 		List<Frame> frames = recording.frames();
 		for (int tick = 0; tick < frames.size(); tick++) {
 			Frame frame = frames.get(tick);
@@ -228,23 +228,23 @@ public final class ReplayFileWriter {
 
 			for (RecordedEvent event : frame.events()) {
 				if (event instanceof RecordedEvent.BlockChange change) {
-					NbtCompound nbt = new NbtCompound();
+					CompoundTag nbt = new CompoundTag();
 					nbt.putInt("Tick", tick);
 					nbt.putInt("X", change.pos().getX());
 					nbt.putInt("Y", change.pos().getY());
 					nbt.putInt("Z", change.pos().getZ());
-					nbt.put("Old", NbtHelper.fromBlockState(change.oldState()));
-					nbt.put("New", NbtHelper.fromBlockState(change.newState()));
+					nbt.put("Old", NbtUtils.writeBlockState(change.oldState()));
+					nbt.put("New", NbtUtils.writeBlockState(change.newState()));
 					blockChanges.add(nbt);
 				} else {
-					NbtCompound nbt = eventToNbt(event, registries);
+					CompoundTag nbt = eventToNbt(event, registries);
 					nbt.putInt("Tick", tick);
 					events.add(nbt);
 				}
 			}
 		}
 
-		NbtList entities = new NbtList();
+		ListTag entities = new ListTag();
 		for (Track track : tracks.values()) {
 			entities.add(track.toNbt());
 		}
@@ -255,16 +255,16 @@ public final class ReplayFileWriter {
 		return root;
 	}
 
-	private static NbtCompound eventToNbt(RecordedEvent event, DynamicRegistryManager registries) {
-		NbtCompound nbt = new NbtCompound();
+	private static CompoundTag eventToNbt(RecordedEvent event, RegistryAccess registries) {
+		CompoundTag nbt = new CompoundTag();
 		switch (event) {
-			case RecordedEvent.Particle e -> putPacket(nbt, "particle", ParticleS2CPacket.CODEC, e.packet(), registries);
-			case RecordedEvent.Sound e -> putPacket(nbt, "sound", PlaySoundS2CPacket.CODEC, e.packet(), registries);
-			case RecordedEvent.EntitySound e -> putPacket(nbt, "entity_sound", PlaySoundFromEntityS2CPacket.CODEC, e.packet(), registries);
-			case RecordedEvent.WorldEvent e -> putPacket(nbt, "world_event", WorldEventS2CPacket.CODEC, e.packet(), registries);
-			case RecordedEvent.Explosion e -> putPacket(nbt, "explosion", ExplosionS2CPacket.CODEC, e.packet(), registries);
-			case RecordedEvent.EntityDamage e -> putPacket(nbt, "entity_damage", EntityDamageS2CPacket.CODEC, e.packet(), registries);
-			case RecordedEvent.BlockBreaking e -> putPacket(nbt, "block_breaking", BlockBreakingProgressS2CPacket.CODEC, e.packet(), registries);
+			case RecordedEvent.Particle e -> putPacket(nbt, "particle", ClientboundLevelParticlesPacket.STREAM_CODEC, e.packet(), registries);
+			case RecordedEvent.Sound e -> putPacket(nbt, "sound", ClientboundSoundPacket.STREAM_CODEC, e.packet(), registries);
+			case RecordedEvent.EntitySound e -> putPacket(nbt, "entity_sound", ClientboundSoundEntityPacket.STREAM_CODEC, e.packet(), registries);
+			case RecordedEvent.WorldEvent e -> putPacket(nbt, "world_event", ClientboundLevelEventPacket.STREAM_CODEC, e.packet(), registries);
+			case RecordedEvent.Explosion e -> putPacket(nbt, "explosion", ClientboundExplodePacket.STREAM_CODEC, e.packet(), registries);
+			case RecordedEvent.EntityDamage e -> putPacket(nbt, "entity_damage", ClientboundDamageEventPacket.STREAM_CODEC, e.packet(), registries);
+			case RecordedEvent.BlockBreaking e -> putPacket(nbt, "block_breaking", ClientboundBlockDestructionPacket.STREAM_CODEC, e.packet(), registries);
 			case RecordedEvent.EntityStatus e -> {
 				nbt.putString("Type", "entity_status");
 				nbt.putInt("EntityId", e.entityId());
@@ -281,7 +281,7 @@ public final class ReplayFileWriter {
 		return nbt;
 	}
 
-	private static <T> void putPacket(NbtCompound nbt, String type, PacketCodec<? super RegistryByteBuf, T> codec, T packet, DynamicRegistryManager registries) {
+	private static <T> void putPacket(CompoundTag nbt, String type, StreamCodec<? super RegistryFriendlyByteBuf, T> codec, T packet, RegistryAccess registries) {
 		nbt.putString("Type", type);
 		byte[] bytes = encode(codec, packet, registries);
 		if (bytes != null) {
@@ -290,10 +290,10 @@ public final class ReplayFileWriter {
 	}
 
 	/** Vanilla network encoding of {@code value}; {@code null} if the codec refuses it. */
-	private static <T> byte @Nullable [] encode(PacketCodec<? super RegistryByteBuf, T> codec, T value, DynamicRegistryManager registries) {
+	private static <T> byte @Nullable [] encode(StreamCodec<? super RegistryFriendlyByteBuf, T> codec, T value, RegistryAccess registries) {
 		ByteBuf raw = Unpooled.buffer();
 		try {
-			codec.encode(new RegistryByteBuf(raw, registries), value);
+			codec.encode(new RegistryFriendlyByteBuf(raw, registries), value);
 			byte[] bytes = new byte[raw.readableBytes()];
 			raw.readBytes(bytes);
 			return bytes;
@@ -314,13 +314,13 @@ public final class ReplayFileWriter {
 		private final IntArrayList vehicle = new IntArrayList();
 		private final IntArrayList eye = new IntArrayList();
 		private final IntArrayList state = new IntArrayList();
-		private final NbtList looks = new NbtList();
+		private final ListTag looks = new ListTag();
 		@Nullable
 		private EntitySample first;
 		@Nullable
 		private EntityAppearance lastLook;
 
-		void add(int tick, EntitySample sample, DynamicRegistryManager registries) {
+		void add(int tick, EntitySample sample, RegistryAccess registries) {
 			if (this.first == null) {
 				this.first = sample;
 			}
@@ -347,11 +347,11 @@ public final class ReplayFileWriter {
 			}
 		}
 
-		NbtCompound toNbt() {
+		CompoundTag toNbt() {
 			EntityAppearance look = this.first.appearance;
-			NbtCompound nbt = new NbtCompound();
+			CompoundTag nbt = new CompoundTag();
 			nbt.putInt("EntityId", this.first.entityId);
-			nbt.putString("Type", Registries.ENTITY_TYPE.getId(look.type()).toString());
+			nbt.putString("Type", BuiltInRegistries.ENTITY_TYPE.getKey(look.type()).toString());
 			nbt.putString("UUID", look.uuid().toString());
 			if (look.profile() != null) {
 				nbt.putString("Name", look.profile().name());
@@ -369,32 +369,32 @@ public final class ReplayFileWriter {
 			return nbt;
 		}
 
-		private static NbtCompound lookToNbt(int tick, EntityAppearance look, DynamicRegistryManager registries) {
-			NbtCompound nbt = new NbtCompound();
+		private static CompoundTag lookToNbt(int tick, EntityAppearance look, RegistryAccess registries) {
+			CompoundTag nbt = new CompoundTag();
 			nbt.putInt("Tick", tick);
-			byte[] tracked = encode(EntityTrackerUpdateS2CPacket.CODEC, new EntityTrackerUpdateS2CPacket(0, look.trackedData()), registries);
+			byte[] tracked = encode(ClientboundSetEntityDataPacket.STREAM_CODEC, new ClientboundSetEntityDataPacket(0, look.trackedData()), registries);
 			if (tracked != null) {
 				nbt.putByteArray("Tracked", tracked);
 			}
 
 			if (look.spawnPacket() != null) {
-				byte[] spawn = encode(EntitySpawnS2CPacket.CODEC, look.spawnPacket(), registries);
+				byte[] spawn = encode(ClientboundAddEntityPacket.STREAM_CODEC, look.spawnPacket(), registries);
 				if (spawn != null) {
 					nbt.putByteArray("Spawn", spawn);
 				}
 			}
 
 			if (look.equipment() != null) {
-				NbtList equipment = new NbtList();
+				ListTag equipment = new ListTag();
 				for (EquipmentSlot slot : EquipmentSlot.values()) {
 					ItemStack stack = look.equipment()[slot.ordinal()];
 					if (stack.isEmpty()) {
 						continue;
 					}
 
-					ItemStack.CODEC.encodeStart(registries.getOps(NbtOps.INSTANCE), stack).result().ifPresent(item -> {
-						NbtCompound entry = new NbtCompound();
-						entry.putString("Slot", slot.asString());
+					ItemStack.CODEC.encodeStart(registries.createSerializationContext(NbtOps.INSTANCE), stack).result().ifPresent(item -> {
+						CompoundTag entry = new CompoundTag();
+						entry.putString("Slot", slot.getSerializedName());
 						entry.put("Item", item);
 						equipment.add(entry);
 					});

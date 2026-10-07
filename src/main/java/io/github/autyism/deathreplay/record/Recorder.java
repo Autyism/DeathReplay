@@ -4,7 +4,22 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.protocol.game.ClientboundAddEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.network.syncher.SynchedEntityData;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.EquipmentSlot;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.chunk.LevelChunk;
 import io.github.autyism.deathreplay.DeathReplayClient;
 import io.github.autyism.deathreplay.config.DeathReplayConfig;
 import it.unimi.dsi.fastutil.ints.Int2ObjectMap;
@@ -15,22 +30,6 @@ import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.block.BlockState;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.EquipmentSlot;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.data.DataTracker;
-import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.item.ItemStack;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.network.packet.s2c.play.EntitySpawnS2CPacket;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.chunk.WorldChunk;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -74,10 +73,10 @@ public final class Recorder {
 	/** Last captured look of each entity, so unchanged looks are shared between frames. */
 	private static final Int2ObjectMap<EntityAppearance> APPEARANCES = new Int2ObjectOpenHashMap<>();
 	/** Spawn packets of the entities currently known to the client, by entity id. */
-	private static final Int2ObjectMap<EntitySpawnS2CPacket> SPAWN_PACKETS = new Int2ObjectOpenHashMap<>();
+	private static final Int2ObjectMap<ClientboundAddEntityPacket> SPAWN_PACKETS = new Int2ObjectOpenHashMap<>();
 	/** The world {@link #SPAWN_PACKETS} belongs to; entity ids mean nothing across worlds. */
 	@Nullable
-	private static ClientWorld spawnPacketWorld;
+	private static ClientLevel spawnPacketWorld;
 
 	/**
 	 * Chunks on the player's recent route that the client has since unloaded, captured at the
@@ -89,19 +88,19 @@ public final class Recorder {
 	/** Every how many frames the player's position is looked at when working out the route. */
 	private static final int ROUTE_STEP = 10;
 
-	private record UnloadedChunk(ChunkDataS2CPacket packet, long tick) {
+	private record UnloadedChunk(ClientboundLevelChunkWithLightPacket packet, long tick) {
 	}
 
 	private static State state = State.IDLE;
 	@Nullable
-	private static ClientWorld world;
+	private static ClientLevel world;
 	@Nullable
-	private static ClientPlayerEntity player;
+	private static LocalPlayer player;
 	private static int deathFrame;
 	private static int tailTicksLeft;
 	private static long deathTimeMillis;
 	@Nullable
-	private static Text deathMessage;
+	private static Component deathMessage;
 	/** Recording of the death the player is still dead from; {@code null} once respawned. */
 	@Nullable
 	private static Recording frozen;
@@ -161,9 +160,9 @@ public final class Recorder {
 	// ---------------------------------------------------------------- tick
 
 	/** Called at the end of every client tick. */
-	public static void tick(MinecraftClient client) {
-		ClientPlayerEntity currentPlayer = client.player;
-		ClientWorld currentWorld = client.world;
+	public static void tick(Minecraft client) {
+		LocalPlayer currentPlayer = client.player;
+		ClientLevel currentWorld = client.level;
 		if (currentPlayer == null || currentWorld == null) {
 			if (world != null || last != null) {
 				// Left the server: a recording is only meaningful with that server's registries.
@@ -190,7 +189,7 @@ public final class Recorder {
 			reset();
 			world = currentWorld;
 			player = currentPlayer;
-			if (respawnHintPending && !currentPlayer.isDead()) {
+			if (respawnHintPending && !currentPlayer.isDeadOrDying()) {
 				respawnHintPending = false;
 				DeathReplayClient.showRespawnHint(client);
 			}
@@ -211,7 +210,7 @@ public final class Recorder {
 		switch (state) {
 			case IDLE -> {
 				PENDING_EVENTS.clear();
-				if (!currentPlayer.isDead()) {
+				if (!currentPlayer.isDeadOrDying()) {
 					state = State.RECORDING;
 				}
 			}
@@ -222,7 +221,7 @@ public final class Recorder {
 					BUFFER.removeFirst();
 				}
 
-				if (currentPlayer.isDead()) {
+				if (currentPlayer.isDeadOrDying()) {
 					startTail();
 				}
 			}
@@ -248,7 +247,7 @@ public final class Recorder {
 		deathMessage = null;
 	}
 
-	private static void freeze(MinecraftClient client, ClientWorld currentWorld, ClientPlayerEntity currentPlayer) {
+	private static void freeze(Minecraft client, ClientLevel currentWorld, LocalPlayer currentPlayer) {
 		List<Frame> frames = List.copyOf(BUFFER);
 		BUFFER.clear();
 		APPEARANCES.clear();
@@ -257,10 +256,10 @@ public final class Recorder {
 
 		EntitySample atDeath = frames.get(deathFrame).find(currentPlayer.getId());
 		long snapshotStart = System.nanoTime();
-		Long2ObjectMap<ChunkDataS2CPacket> unloaded = new Long2ObjectOpenHashMap<>();
+		Long2ObjectMap<ClientboundLevelChunkWithLightPacket> unloaded = new Long2ObjectOpenHashMap<>();
 		UNLOADED_CHUNKS.forEach((pos, chunk) -> unloaded.put((long) pos, chunk.packet()));
-		WorldSnapshot snapshot = WorldSnapshot.capture(currentWorld, currentPlayer.getChunkPos(), route(frames, currentPlayer.getId()), unloaded,
-			client.options.getClampedViewDistance());
+		WorldSnapshot snapshot = WorldSnapshot.capture(currentWorld, currentPlayer.chunkPosition(), route(frames, currentPlayer.getId()), unloaded,
+			client.options.getEffectiveRenderDistance());
 		UNLOADED_CHUNKS.clear();
 		double snapshotMillis = (System.nanoTime() - snapshotStart) / 1.0e6;
 		frozen = new Recording(
@@ -268,9 +267,9 @@ public final class Recorder {
 			deathFrame,
 			currentPlayer.getId(),
 			currentPlayer.getGameProfile().name(),
-			currentPlayer.getUuid(),
+			currentPlayer.getUUID(),
 			snapshot,
-			atDeath != null ? atDeath.pos() : currentPlayer.getEntityPos(),
+			atDeath != null ? atDeath.pos() : currentPlayer.position(),
 			deathMessage,
 			deathTimeMillis
 		);
@@ -280,7 +279,7 @@ public final class Recorder {
 			frames.size(), String.format("%.1f", frozen.seconds()), deathFrame, snapshot.chunks().size(), String.format("%.1f", snapshotMillis));
 
 		if (DeathReplayConfig.get().autoSave) {
-			ReplayFileWriter.saveAsync(client, frozen, currentWorld.getRegistryManager());
+			ReplayFileWriter.saveAsync(client, frozen, currentWorld.registryAccess());
 		}
 	}
 
@@ -297,7 +296,7 @@ public final class Recorder {
 
 			EntitySample sample = frame.find(playerId);
 			if (sample != null) {
-				ChunkPos pos = new ChunkPos(BlockPos.ofFloored(sample.x, sample.y, sample.z));
+				ChunkPos pos = new ChunkPos(BlockPos.containing(sample.x, sample.y, sample.z));
 				if (route.isEmpty() || !route.getLast().equals(pos)) {
 					route.add(pos);
 				}
@@ -311,7 +310,7 @@ public final class Recorder {
 	 * Called just before the client unloads a chunk. If the player passed near it within the
 	 * buffered time, its terrain is kept for the replay.
 	 */
-	public static void onChunkUnload(ClientWorld unloadingWorld, ChunkPos pos) {
+	public static void onChunkUnload(ClientLevel unloadingWorld, ChunkPos pos) {
 		if (state != State.RECORDING || unloadingWorld != world || player == null || BUFFER.isEmpty()) {
 			return;
 		}
@@ -320,9 +319,9 @@ public final class Recorder {
 			return;
 		}
 
-		WorldChunk chunk = unloadingWorld.getChunkManager().getWorldChunk(pos.x, pos.z, false);
+		LevelChunk chunk = unloadingWorld.getChunkSource().getChunk(pos.x, pos.z, false);
 		if (chunk != null) {
-			UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ChunkDataS2CPacket(chunk, unloadingWorld.getLightingProvider(), null, null), tickCounter));
+			UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ClientboundLevelChunkWithLightPacket(chunk, unloadingWorld.getLightEngine(), null, null), tickCounter));
 		}
 	}
 
@@ -334,18 +333,18 @@ public final class Recorder {
 	 * packets that follow find nothing to unload. {@link #afterChunkCenterChange} keeps the ones
 	 * that dropped out of reach.
 	 */
-	public static List<WorldChunk> beforeChunkCenterChange(ClientWorld movingWorld) {
+	public static List<LevelChunk> beforeChunkCenterChange(ClientLevel movingWorld) {
 		if (state != State.RECORDING || movingWorld != world || player == null || BUFFER.isEmpty()) {
 			return List.of();
 		}
 
-		List<WorldChunk> nearRoute = new ArrayList<>();
+		List<LevelChunk> nearRoute = new ArrayList<>();
 		LongSet seen = new LongOpenHashSet();
 		for (ChunkPos onRoute : route(BUFFER, player.getId())) {
 			for (int x = onRoute.x - WorldSnapshot.PATH_RADIUS; x <= onRoute.x + WorldSnapshot.PATH_RADIUS; x++) {
 				for (int z = onRoute.z - WorldSnapshot.PATH_RADIUS; z <= onRoute.z + WorldSnapshot.PATH_RADIUS; z++) {
-					if (seen.add(ChunkPos.toLong(x, z))) {
-						WorldChunk chunk = movingWorld.getChunkManager().getWorldChunk(x, z, false);
+					if (seen.add(ChunkPos.asLong(x, z))) {
+						LevelChunk chunk = movingWorld.getChunkSource().getChunk(x, z, false);
 						if (chunk != null) {
 							nearRoute.add(chunk);
 						}
@@ -358,18 +357,18 @@ public final class Recorder {
 	}
 
 	/** Keeps the chunks of {@code nearRoute} that the storage can no longer reach. */
-	public static void afterChunkCenterChange(ClientWorld movedWorld, List<WorldChunk> nearRoute) {
-		for (WorldChunk chunk : nearRoute) {
+	public static void afterChunkCenterChange(ClientLevel movedWorld, List<LevelChunk> nearRoute) {
+		for (LevelChunk chunk : nearRoute) {
 			ChunkPos pos = chunk.getPos();
-			if (movedWorld.getChunkManager().getWorldChunk(pos.x, pos.z, false) != chunk) {
-				UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ChunkDataS2CPacket(chunk, movedWorld.getLightingProvider(), null, null), tickCounter));
+			if (movedWorld.getChunkSource().getChunk(pos.x, pos.z, false) != chunk) {
+				UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ClientboundLevelChunkWithLightPacket(chunk, movedWorld.getLightEngine(), null, null), tickCounter));
 			}
 		}
 	}
 
 	// ---------------------------------------------------------------- frame capture
 
-	private static void captureFrame(ClientWorld currentWorld, ClientPlayerEntity currentPlayer) {
+	private static void captureFrame(ClientLevel currentWorld, LocalPlayer currentPlayer) {
 		long start = System.nanoTime();
 		List<EntitySample> samples = new ArrayList<>();
 		IntSet seen = new IntOpenHashSet();
@@ -379,8 +378,8 @@ public final class Recorder {
 		samples.add(sample(currentPlayer, true));
 		seen.add(currentPlayer.getId());
 
-		for (Entity entity : currentWorld.getEntities()) {
-			if (entity == currentPlayer || entity.isRemoved() || entity.squaredDistanceTo(currentPlayer) > maxDistanceSquared) {
+		for (Entity entity : currentWorld.entitiesForRendering()) {
+			if (entity == currentPlayer || entity.isRemoved() || entity.distanceToSqr(currentPlayer) > maxDistanceSquared) {
 				continue;
 			}
 
@@ -414,7 +413,7 @@ public final class Recorder {
 
 	/** Returns {@code previous} itself when nothing about the entity's look changed. */
 	private static EntityAppearance captureAppearance(Entity entity, boolean localPlayer, @Nullable EntityAppearance previous) {
-		List<DataTracker.SerializedEntry<?>> tracked = entity.getDataTracker().getChangedEntries();
+		List<SynchedEntityData.DataValue<?>> tracked = entity.getEntityData().getNonDefaultValues();
 		if (tracked == null) {
 			tracked = List.of();
 		}
@@ -424,7 +423,7 @@ public final class Recorder {
 			EquipmentSlot[] slots = EquipmentSlot.values();
 			equipment = new ItemStack[slots.length];
 			for (EquipmentSlot slot : slots) {
-				equipment[slot.ordinal()] = living.getEquippedStack(slot);
+				equipment[slot.ordinal()] = living.getItemBySlot(slot);
 			}
 		}
 
@@ -443,8 +442,8 @@ public final class Recorder {
 
 		return new EntityAppearance(
 			entity.getType(),
-			entity.getUuid(),
-			entity instanceof PlayerEntity playerEntity ? playerEntity.getGameProfile() : null,
+			entity.getUUID(),
+			entity instanceof Player playerEntity ? playerEntity.getGameProfile() : null,
 			localPlayer,
 			localPlayer ? null : SPAWN_PACKETS.get(entity.getId()),
 			List.copyOf(tracked),
@@ -452,14 +451,14 @@ public final class Recorder {
 		);
 	}
 
-	private static boolean sameTrackedData(List<DataTracker.SerializedEntry<?>> a, List<DataTracker.SerializedEntry<?>> b) {
+	private static boolean sameTrackedData(List<SynchedEntityData.DataValue<?>> a, List<SynchedEntityData.DataValue<?>> b) {
 		if (a.size() != b.size()) {
 			return false;
 		}
 
 		for (int i = 0; i < a.size(); i++) {
-			DataTracker.SerializedEntry<?> left = a.get(i);
-			DataTracker.SerializedEntry<?> right = b.get(i);
+			SynchedEntityData.DataValue<?> left = a.get(i);
+			SynchedEntityData.DataValue<?> right = b.get(i);
 			if (left.id() != right.id()) {
 				return false;
 			}
@@ -468,7 +467,7 @@ public final class Recorder {
 			Object rightValue = right.value();
 			// ItemStack has no equals(); without this every dropped item would look "changed" each tick.
 			boolean same = leftValue instanceof ItemStack leftStack && rightValue instanceof ItemStack rightStack
-				? ItemStack.areEqual(leftStack, rightStack)
+				? ItemStack.matches(leftStack, rightStack)
 				: Objects.equals(leftValue, rightValue);
 			if (!same) {
 				return false;
@@ -484,7 +483,7 @@ public final class Recorder {
 		}
 
 		for (int i = 0; i < a.length; i++) {
-			if (!ItemStack.areEqual(a[i], b[i])) {
+			if (!ItemStack.matches(a[i], b[i])) {
 				return false;
 			}
 		}
@@ -500,23 +499,23 @@ public final class Recorder {
 		}
 	}
 
-	public static void onBlockChange(ClientWorld changedWorld, BlockPos pos, BlockState oldState, BlockState newState) {
+	public static void onBlockChange(ClientLevel changedWorld, BlockPos pos, BlockState oldState, BlockState newState) {
 		if (isCapturing() && changedWorld == world && oldState != newState) {
-			onEvent(new RecordedEvent.BlockChange(pos.toImmutable(), oldState, newState));
+			onEvent(new RecordedEvent.BlockChange(pos.immutable(), oldState, newState));
 		}
 	}
 
 	/** Kept at all times, not only while capturing: entities usually spawn long before the death. */
-	public static void onEntitySpawn(ClientWorld spawnWorld, EntitySpawnS2CPacket packet) {
+	public static void onEntitySpawn(ClientLevel spawnWorld, ClientboundAddEntityPacket packet) {
 		if (spawnWorld != spawnPacketWorld) {
 			SPAWN_PACKETS.clear();
 			spawnPacketWorld = spawnWorld;
 		}
 
-		SPAWN_PACKETS.put(packet.getEntityId(), packet);
+		SPAWN_PACKETS.put(packet.getId(), packet);
 	}
 
-	public static void onDeathMessage(Text message, int playerId) {
+	public static void onDeathMessage(Component message, int playerId) {
 		deathMessage = message;
 		// The death message is the first sign of the local player's death. With the "immediate respawn"
 		// game rule the client asks to respawn right away and its player is never seen dead, so the
@@ -534,9 +533,9 @@ public final class Recorder {
 		state = State.TAIL;
 	}
 
-	private static void pruneSpawnPackets(ClientWorld currentWorld) {
+	private static void pruneSpawnPackets(ClientLevel currentWorld) {
 		if (currentWorld == spawnPacketWorld) {
-			SPAWN_PACKETS.keySet().removeIf(id -> currentWorld.getEntityById(id) == null);
+			SPAWN_PACKETS.keySet().removeIf(id -> currentWorld.getEntity(id) == null);
 		}
 	}
 }

@@ -1,20 +1,19 @@
 package io.github.autyism.deathreplay.config;
 
 import java.util.List;
-
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractSliderButton;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.CycleButton;
+import net.minecraft.client.gui.components.Tooltip;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import io.github.autyism.deathreplay.camera.DeathCameraMode;
 import io.github.autyism.deathreplay.replay.ReplayBrowserScreen;
 import io.github.autyism.deathreplay.replay.ReplayView;
 import io.github.autyism.deathreplay.waypoint.WaypointListScreen;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.tooltip.Tooltip;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.CyclingButtonWidget;
-import net.minecraft.client.gui.widget.SliderWidget;
-import net.minecraft.screen.ScreenTexts;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -33,7 +32,7 @@ public class SettingsScreen extends Screen {
 	private final DeathReplayConfig config = DeathReplayConfig.get();
 
 	public SettingsScreen(@Nullable Screen parent) {
-		super(Text.translatable("deathreplay.options.title"));
+		super(Component.translatable("deathreplay.options.title"));
 		this.parent = parent;
 	}
 
@@ -42,59 +41,59 @@ public class SettingsScreen extends Screen {
 		int x = this.width / 2 - WIDGET_WIDTH / 2;
 		int y = Math.max(28, this.height / 2 - 4 * ROW_HEIGHT - 8);
 
-		this.addDrawableChild(new BufferSlider(x, y, this.config));
+		this.addRenderableWidget(new BufferSlider(x, y, this.config));
 		y += ROW_HEIGHT;
 
-		this.addDrawableChild(CyclingButtonWidget.onOffBuilder(this.config.autoSave)
-			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.auto_save.tooltip")))
-			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.auto_save"), (button, value) -> this.config.autoSave = value));
+		this.addRenderableWidget(CycleButton.onOffBuilder(this.config.autoSave)
+			.withTooltip(value -> Tooltip.create(Component.translatable("deathreplay.options.auto_save.tooltip")))
+			.create(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.translatable("deathreplay.options.auto_save"), (button, value) -> this.config.autoSave = value));
 		y += ROW_HEIGHT;
 
-		this.addDrawableChild(CyclingButtonWidget.builder(ReplayView::getDisplayName, this.config.replayView)
-			.values(List.of(ReplayView.values()))
-			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.replay_view.tooltip")))
-			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.replay_view"), (button, value) -> this.config.replayView = value));
+		this.addRenderableWidget(CycleButton.builder(ReplayView::getDisplayName, this.config.replayView)
+			.withValues(List.of(ReplayView.values()))
+			.withTooltip(value -> Tooltip.create(Component.translatable("deathreplay.options.replay_view.tooltip")))
+			.create(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.translatable("deathreplay.options.replay_view"), (button, value) -> this.config.replayView = value));
 		y += ROW_HEIGHT;
 
-		this.addDrawableChild(CyclingButtonWidget.onOffBuilder(this.config.respawnHint)
-			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.respawn_hint.tooltip")))
-			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.respawn_hint"), (button, value) -> this.config.respawnHint = value));
+		this.addRenderableWidget(CycleButton.onOffBuilder(this.config.respawnHint)
+			.withTooltip(value -> Tooltip.create(Component.translatable("deathreplay.options.respawn_hint.tooltip")))
+			.create(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.translatable("deathreplay.options.respawn_hint"), (button, value) -> this.config.respawnHint = value));
 		y += ROW_HEIGHT;
 
-		this.addDrawableChild(CyclingButtonWidget.onOffBuilder(this.config.deathFreeCamera)
-			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.death_free_camera.tooltip")))
-			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.death_free_camera"), (button, value) -> this.config.deathFreeCamera = value));
+		this.addRenderableWidget(CycleButton.onOffBuilder(this.config.deathFreeCamera)
+			.withTooltip(value -> Tooltip.create(Component.translatable("deathreplay.options.death_free_camera.tooltip")))
+			.create(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.translatable("deathreplay.options.death_free_camera"), (button, value) -> this.config.deathFreeCamera = value));
 		y += ROW_HEIGHT;
 
-		this.addDrawableChild(CyclingButtonWidget.builder(DeathCameraMode::getDisplayName, this.config.deathCameraMode)
-			.values(List.of(DeathCameraMode.values()))
-			.tooltip(value -> Tooltip.of(Text.translatable("deathreplay.options.death_camera_mode.tooltip")))
-			.build(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.translatable("deathreplay.options.death_camera_mode"), (button, value) -> this.config.deathCameraMode = value));
+		this.addRenderableWidget(CycleButton.builder(DeathCameraMode::getDisplayName, this.config.deathCameraMode)
+			.withValues(List.of(DeathCameraMode.values()))
+			.withTooltip(value -> Tooltip.create(Component.translatable("deathreplay.options.death_camera_mode.tooltip")))
+			.create(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.translatable("deathreplay.options.death_camera_mode"), (button, value) -> this.config.deathCameraMode = value));
 		y += ROW_HEIGHT + 4;
 
 		int half = (WIDGET_WIDTH - 4) / 2;
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.options.browse"), button -> this.client.setScreen(new ReplayBrowserScreen(this)))
-			.dimensions(x, y, half, WIDGET_HEIGHT)
+		this.addRenderableWidget(Button.builder(Component.translatable("deathreplay.options.browse"), button -> this.minecraft.setScreen(new ReplayBrowserScreen(this)))
+			.bounds(x, y, half, WIDGET_HEIGHT)
 			.build());
-		this.addDrawableChild(ButtonWidget.builder(Text.translatable("deathreplay.options.waypoints"), button -> this.client.setScreen(new WaypointListScreen(this)))
-			.dimensions(x + half + 4, y, half, WIDGET_HEIGHT)
+		this.addRenderableWidget(Button.builder(Component.translatable("deathreplay.options.waypoints"), button -> this.minecraft.setScreen(new WaypointListScreen(this)))
+			.bounds(x + half + 4, y, half, WIDGET_HEIGHT)
 			.build());
 		y += ROW_HEIGHT;
 
-		this.addDrawableChild(ButtonWidget.builder(ScreenTexts.DONE, button -> this.close())
-			.dimensions(this.width / 2 - 100, y, 200, WIDGET_HEIGHT)
+		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
+			.bounds(this.width / 2 - 100, y, 200, WIDGET_HEIGHT)
 			.build());
 	}
 
 	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+	public void render(GuiGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		super.render(context, mouseX, mouseY, deltaTicks);
-		context.drawCenteredTextWithShadow(this.textRenderer, this.title, this.width / 2, 14, TITLE_COLOR);
+		context.drawCenteredString(this.font, this.title, this.width / 2, 14, TITLE_COLOR);
 	}
 
 	@Override
-	public void close() {
-		this.client.setScreen(this.parent);
+	public void onClose() {
+		this.minecraft.setScreen(this.parent);
 	}
 
 	@Override
@@ -104,25 +103,25 @@ public class SettingsScreen extends Screen {
 	}
 
 	/** Buffer length in whole steps of five seconds. */
-	private static final class BufferSlider extends SliderWidget {
+	private static final class BufferSlider extends AbstractSliderButton {
 		private static final int STEPS = (DeathReplayConfig.MAX_BUFFER_SECONDS - DeathReplayConfig.MIN_BUFFER_SECONDS) / BUFFER_STEP_SECONDS;
 
 		private final DeathReplayConfig config;
 
 		BufferSlider(int x, int y, DeathReplayConfig config) {
-			super(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Text.empty(), (config.bufferSeconds - DeathReplayConfig.MIN_BUFFER_SECONDS) / (double) (STEPS * BUFFER_STEP_SECONDS));
+			super(x, y, WIDGET_WIDTH, WIDGET_HEIGHT, Component.empty(), (config.bufferSeconds - DeathReplayConfig.MIN_BUFFER_SECONDS) / (double) (STEPS * BUFFER_STEP_SECONDS));
 			this.config = config;
-			this.setTooltip(Tooltip.of(Text.translatable("deathreplay.options.buffer_seconds.tooltip")));
+			this.setTooltip(Tooltip.create(Component.translatable("deathreplay.options.buffer_seconds.tooltip")));
 			this.updateMessage();
 		}
 
 		private int seconds() {
-			return DeathReplayConfig.MIN_BUFFER_SECONDS + (int) Math.round(MathHelper.clamp(this.value, 0.0, 1.0) * STEPS) * BUFFER_STEP_SECONDS;
+			return DeathReplayConfig.MIN_BUFFER_SECONDS + (int) Math.round(Mth.clamp(this.value, 0.0, 1.0) * STEPS) * BUFFER_STEP_SECONDS;
 		}
 
 		@Override
 		protected void updateMessage() {
-			this.setMessage(Text.translatable("deathreplay.options.buffer_seconds", this.seconds()));
+			this.setMessage(Component.translatable("deathreplay.options.buffer_seconds", this.seconds()));
 		}
 
 		@Override

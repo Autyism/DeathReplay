@@ -3,7 +3,24 @@ package io.github.autyism.deathreplay.replay;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.network.protocol.game.ClientboundAnimatePacket;
+import net.minecraft.network.protocol.game.ClientboundExplodePacket;
+import net.minecraft.network.protocol.game.ClientboundLevelEventPacket;
+import net.minecraft.network.protocol.game.ClientboundLevelParticlesPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundEntityPacket;
+import net.minecraft.network.protocol.game.ClientboundSoundPacket;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.util.Mth;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.phys.Vec3;
 import io.github.autyism.deathreplay.DeathReplayClient;
 import io.github.autyism.deathreplay.camera.CameraInput;
 import io.github.autyism.deathreplay.camera.DetachedCamera;
@@ -20,24 +37,6 @@ import it.unimi.dsi.fastutil.ints.IntOpenHashSet;
 import it.unimi.dsi.fastutil.ints.IntSet;
 import it.unimi.dsi.fastutil.objects.ObjectIterator;
 import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet;
-import net.minecraft.block.Block;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.network.packet.s2c.play.EntityAnimationS2CPacket;
-import net.minecraft.network.packet.s2c.play.ExplosionS2CPacket;
-import net.minecraft.network.packet.s2c.play.ParticleS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundFromEntityS2CPacket;
-import net.minecraft.network.packet.s2c.play.PlaySoundS2CPacket;
-import net.minecraft.network.packet.s2c.play.WorldEventS2CPacket;
-import net.minecraft.particle.ParticleTypes;
-import net.minecraft.sound.SoundCategory;
-import net.minecraft.sound.SoundEvents;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -66,7 +65,7 @@ public final class Replay {
 	/** Puppet entity ids count down from here; server-assigned ids are positive. */
 	private static final int PUPPET_ID_BASE = -1_000_000;
 	/** Set without neighbour updates or shape reactions: the recorded state is put back exactly. */
-	private static final int BLOCK_FLAGS = Block.NOTIFY_LISTENERS | Block.REDRAW_ON_MAIN_THREAD | Block.FORCE_STATE;
+	private static final int BLOCK_FLAGS = Block.UPDATE_CLIENTS | Block.UPDATE_IMMEDIATE | Block.UPDATE_KNOWN_SHAPE;
 	public static final double MIN_DISTANCE = 1.5;
 	public static final double MAX_DISTANCE = 20.0;
 	public static final double MIN_FLY_SPEED = 2.0;
@@ -90,15 +89,15 @@ public final class Replay {
 	private static Recording recording;
 	/** The world the puppets are in: the stage during playback, the real world for the still. */
 	@Nullable
-	private static ClientWorld world;
+	private static ClientLevel world;
 	/** The stage; non-null exactly while playback is running. */
 	@Nullable
-	private static ClientWorld stage;
+	private static ClientLevel stage;
 	/** The game's real world and player when this replay started; if either changes, it ends. */
 	@Nullable
-	private static ClientWorld boundWorld;
+	private static ClientLevel boundWorld;
 	@Nullable
-	private static ClientPlayerEntity boundPlayer;
+	private static LocalPlayer boundPlayer;
 	/** Index of the frame the puppets were last given. */
 	private static int tick;
 	private static boolean playing;
@@ -112,7 +111,7 @@ public final class Replay {
 	private static ReplayView view = ReplayView.THIRD_PERSON;
 	private static double distance = DEFAULT_DISTANCE;
 	private static double flySpeed = DEFAULT_FLY_SPEED;
-	private static Vec3d lastTarget = Vec3d.ZERO;
+	private static Vec3 lastTarget = Vec3.ZERO;
 	private static boolean controlling;
 	private static boolean stopRequested;
 	private static long lastFrameNanos;
@@ -144,13 +143,13 @@ public final class Replay {
 	 * Whether the latest recording can be played right now. True on the death screen and
 	 * after respawning alike, for as long as the player stays on the server.
 	 */
-	public static boolean isAvailable(MinecraftClient client) {
+	public static boolean isAvailable(Minecraft client) {
 		return Recorder.getLast() != null && canPlay(client);
 	}
 
 	/** Whether any recording could be played: the stage needs a live connection to build on. */
-	public static boolean canPlay(MinecraftClient client) {
-		return client.world != null && client.player != null && client.getNetworkHandler() != null;
+	public static boolean canPlay(Minecraft client) {
+		return client.level != null && client.player != null && client.getConnection() != null;
 	}
 
 	/**
@@ -158,7 +157,7 @@ public final class Replay {
 	 * playback runs, or {@code null} when the game's own world is on screen.
 	 */
 	@Nullable
-	public static ClientWorld getStage() {
+	public static ClientLevel getStage() {
 		return stage;
 	}
 
@@ -228,24 +227,24 @@ public final class Replay {
 
 	// ---------------------------------------------------------------- start / stop
 
-	/** Plays the latest recording. {@code client.currentScreen} is returned to afterwards. */
-	public static boolean open(MinecraftClient client) {
+	/** Plays the latest recording. {@code client.screen} is returned to afterwards. */
+	public static boolean open(Minecraft client) {
 		Recording latest = Recorder.getLast();
 		return latest != null && open(client, latest);
 	}
 
 	/** Plays {@code toPlay} on the replay screen. Returns false if that is not possible now. */
-	public static boolean open(MinecraftClient client, Recording toPlay) {
+	public static boolean open(Minecraft client, Recording toPlay) {
 		if (isPlayback() || !canPlay(client) || toPlay.frames().isEmpty()) {
 			return false;
 		}
 
-		Screen parent = client.currentScreen;
+		Screen parent = client.screen;
 		if (isStill()) {
 			stop(client);
 		}
 
-		ClientWorld newStage;
+		ClientLevel newStage;
 		try {
 			long start = System.nanoTime();
 			newStage = ReplayWorld.create(client, toPlay);
@@ -285,13 +284,13 @@ public final class Replay {
 	 * of the current death is ready, the death screen camera is in use, and the server has
 	 * taken the live entities away.
 	 */
-	public static boolean showStill(MinecraftClient client) {
+	public static boolean showStill(Minecraft client) {
 		Recording frozen = Recorder.getFrozen();
 		if (isActive() || frozen == null || frozen.frames().isEmpty() || !canPlay(client)) {
 			return false;
 		}
 
-		bind(client, frozen, client.world);
+		bind(client, frozen, client.level);
 		still = true;
 		tick = frozen.tickCount() - 1;
 		syncPuppets(frozen.frames().get(tick));
@@ -299,10 +298,10 @@ public final class Replay {
 		return true;
 	}
 
-	private static void bind(MinecraftClient client, Recording toShow, ClientWorld puppetWorld) {
+	private static void bind(Minecraft client, Recording toShow, ClientLevel puppetWorld) {
 		recording = toShow;
 		world = puppetWorld;
-		boundWorld = client.world;
+		boundWorld = client.level;
 		boundPlayer = client.player;
 		playing = false;
 		stopRequested = false;
@@ -316,7 +315,7 @@ public final class Replay {
 	 * Called when the replay screen goes away: playback ends, the real world is back on screen,
 	 * and the still is shown again if the player is still on the death screen.
 	 */
-	static void endPlayback(MinecraftClient client) {
+	static void endPlayback(Minecraft client) {
 		stop(client);
 		if (shouldShowStill(client)) {
 			showStill(client);
@@ -328,20 +327,20 @@ public final class Replay {
 	 * vanilla server every entity is taken away from a dead player one second after the death.
 	 * A server that keeps sending the scene keeps its live view, and no still is shown.
 	 */
-	private static boolean shouldShowStill(MinecraftClient client) {
+	private static boolean shouldShowStill(Minecraft client) {
 		Recording frozen = Recorder.getFrozen();
 		return frozen != null
 			&& DeathView.isActive()
 			&& canPlay(client)
-			&& client.player.isDead()
-			&& client.world.getRegistryKey() == frozen.dimension()
+			&& client.player.isDeadOrDying()
+			&& client.level.dimension() == frozen.dimension()
 			&& !hasLiveEntitiesNearby(client);
 	}
 
-	private static boolean hasLiveEntitiesNearby(MinecraftClient client) {
+	private static boolean hasLiveEntitiesNearby(Minecraft client) {
 		double maxDistanceSquared = Recorder.CAPTURE_RADIUS * Recorder.CAPTURE_RADIUS;
-		for (Entity entity : client.world.getEntities()) {
-			if (entity != client.player && !entity.isRemoved() && !isPuppet(entity) && entity.squaredDistanceTo(client.player) <= maxDistanceSquared) {
+		for (Entity entity : client.level.entitiesForRendering()) {
+			if (entity != client.player && !entity.isRemoved() && !isPuppet(entity) && entity.distanceToSqr(client.player) <= maxDistanceSquared) {
 				return true;
 			}
 		}
@@ -350,7 +349,7 @@ public final class Replay {
 	}
 
 	/** Ends playback or the still. After this the game shows its real world, unchanged. */
-	public static void stop(MinecraftClient client) {
+	public static void stop(Minecraft client) {
 		if (!isActive()) {
 			return;
 		}
@@ -358,13 +357,13 @@ public final class Replay {
 		if (stage != null) {
 			// Cracks drawn on blocks live in the shared world renderer, not in the stage.
 			for (BlockBreak blockBreak : BLOCK_BREAKS) {
-				stage.setBlockBreakingInfo(blockBreak.entityId(), blockBreak.pos(), -1);
+				stage.destroyBlockProgress(blockBreak.entityId(), blockBreak.pos(), -1);
 			}
 
 			stage = null;
 			// Hand the renderers back to whatever the real world is now (possibly none).
-			attachRenderers(client, client.world);
-		} else if (world != null && client.world == world) {
+			attachRenderers(client, client.level);
+		} else if (world != null && client.level == world) {
 			removeAllPuppets(world);
 		}
 
@@ -385,27 +384,27 @@ public final class Replay {
 	}
 
 	/** Points everything that draws the world at {@code target}. The game's own world field is not changed. */
-	private static void attachRenderers(MinecraftClient client, @Nullable ClientWorld target) {
-		client.worldRenderer.setWorld(target);
-		client.particleManager.setWorld(target);
-		client.gameRenderer.setWorld(target);
+	private static void attachRenderers(Minecraft client, @Nullable ClientLevel target) {
+		client.levelRenderer.setLevel(target);
+		client.particleEngine.setLevel(target);
+		client.gameRenderer.setLevel(target);
 	}
 
 	/**
 	 * A replay belongs to the world and player it was started with. A respawn, a dimension
 	 * change or a disconnect ends it; the still additionally needs the player to be dead.
 	 */
-	private static boolean isStillValid(MinecraftClient client) {
-		return client.world == boundWorld
+	private static boolean isStillValid(Minecraft client) {
+		return client.level == boundWorld
 			&& client.player == boundPlayer
 			&& boundPlayer != null
-			&& (!still || boundPlayer.isDead());
+			&& (!still || boundPlayer.isDeadOrDying());
 	}
 
 	// ---------------------------------------------------------------- tick
 
 	/** Called at the end of every client tick. */
-	public static void tick(MinecraftClient client) {
+	public static void tick(Minecraft client) {
 		if (!isActive()) {
 			if (shouldShowStill(client)) {
 				showStill(client);
@@ -468,7 +467,7 @@ public final class Replay {
 
 	/** Jumps straight to {@code target} without playing the effects in between. */
 	private static void jumpTo(int target) {
-		target = MathHelper.clamp(target, 0, recording.tickCount() - 1);
+		target = Mth.clamp(target, 0, recording.tickCount() - 1);
 		removeAllPuppets(world);
 		tick = target;
 		setBlocksThrough(world, target - 1);
@@ -478,13 +477,13 @@ public final class Replay {
 	// ---------------------------------------------------------------- blocks
 
 	/** Applies or undoes recorded block changes until exactly frames 0..{@code target} are applied. */
-	private static void setBlocksThrough(ClientWorld targetWorld, int target) {
+	private static void setBlocksThrough(ClientLevel targetWorld, int target) {
 		List<Frame> frames = recording.frames();
 		while (blocksAppliedThrough > target) {
 			RecordedEvent[] events = frames.get(blocksAppliedThrough).events();
 			for (int i = events.length - 1; i >= 0; i--) {
 				if (events[i] instanceof RecordedEvent.BlockChange change) {
-					targetWorld.setBlockState(change.pos(), change.oldState(), BLOCK_FLAGS, 0);
+					targetWorld.setBlock(change.pos(), change.oldState(), BLOCK_FLAGS, 0);
 				}
 			}
 
@@ -495,7 +494,7 @@ public final class Replay {
 			blocksAppliedThrough++;
 			for (RecordedEvent event : frames.get(blocksAppliedThrough).events()) {
 				if (event instanceof RecordedEvent.BlockChange change) {
-					targetWorld.setBlockState(change.pos(), change.newState(), BLOCK_FLAGS, 0);
+					targetWorld.setBlock(change.pos(), change.newState(), BLOCK_FLAGS, 0);
 				}
 			}
 		}
@@ -549,12 +548,12 @@ public final class Replay {
 		}
 	}
 
-	private static void removePuppet(ClientWorld puppetWorld, Puppet puppet) {
+	private static void removePuppet(ClientLevel puppetWorld, Puppet puppet) {
 		PUPPET_ENTITIES.remove(puppet.entity);
 		puppetWorld.removeEntity(puppet.entity.getId(), Entity.RemovalReason.DISCARDED);
 	}
 
-	private static void removeAllPuppets(ClientWorld puppetWorld) {
+	private static void removeAllPuppets(ClientLevel puppetWorld) {
 		for (Puppet puppet : PUPPETS.values()) {
 			puppetWorld.removeEntity(puppet.entity.getId(), Entity.RemovalReason.DISCARDED);
 		}
@@ -572,7 +571,7 @@ public final class Replay {
 	// ---------------------------------------------------------------- effects
 
 	private static void playEvents(Frame frame) {
-		MinecraftClient client = MinecraftClient.getInstance();
+		Minecraft client = Minecraft.getInstance();
 		for (RecordedEvent event : frame.events()) {
 			try {
 				playEvent(client, event);
@@ -583,39 +582,39 @@ public final class Replay {
 		}
 	}
 
-	private static void playEvent(MinecraftClient client, RecordedEvent event) {
+	private static void playEvent(Minecraft client, RecordedEvent event) {
 		switch (event) {
 			case RecordedEvent.BlockChange e -> {
 				// Applied by setBlocksThrough.
 			}
 			case RecordedEvent.Particle e -> playParticles(e.packet());
 			case RecordedEvent.Sound e -> {
-				PlaySoundS2CPacket packet = e.packet();
-				world.playSound(client.player, packet.getX(), packet.getY(), packet.getZ(), packet.getSound(), packet.getCategory(),
+				ClientboundSoundPacket packet = e.packet();
+				world.playSeededSound(client.player, packet.getX(), packet.getY(), packet.getZ(), packet.getSound(), packet.getSource(),
 					packet.getVolume(), packet.getPitch(), packet.getSeed());
 			}
 			case RecordedEvent.EntitySound e -> {
-				PlaySoundFromEntityS2CPacket packet = e.packet();
-				Entity entity = puppetEntity(packet.getEntityId());
+				ClientboundSoundEntityPacket packet = e.packet();
+				Entity entity = puppetEntity(packet.getId());
 				if (entity != null) {
-					world.playSoundFromEntity(client.player, entity, packet.getSound(), packet.getCategory(), packet.getVolume(), packet.getPitch(), packet.getSeed());
+					world.playSeededSound(client.player, entity, packet.getSound(), packet.getSource(), packet.getVolume(), packet.getPitch(), packet.getSeed());
 				}
 			}
 			case RecordedEvent.WorldEvent e -> {
-				WorldEventS2CPacket packet = e.packet();
-				if (packet.isGlobal()) {
-					world.syncGlobalEvent(packet.getEventId(), packet.getPos(), packet.getData());
+				ClientboundLevelEventPacket packet = e.packet();
+				if (packet.isGlobalEvent()) {
+					world.globalLevelEvent(packet.getType(), packet.getPos(), packet.getData());
 				} else {
-					world.syncWorldEvent(packet.getEventId(), packet.getPos(), packet.getData());
+					world.levelEvent(packet.getType(), packet.getPos(), packet.getData());
 				}
 			}
 			case RecordedEvent.Explosion e -> {
-				ExplosionS2CPacket packet = e.packet();
-				Vec3d center = packet.center();
-				world.playSoundClient(center.x, center.y, center.z, packet.explosionSound().value(), SoundCategory.BLOCKS, 4.0F,
+				ClientboundExplodePacket packet = e.packet();
+				Vec3 center = packet.center();
+				world.playLocalSound(center.x, center.y, center.z, packet.explosionSound().value(), SoundSource.BLOCKS, 4.0F,
 					(1.0F + (world.random.nextFloat() - world.random.nextFloat()) * 0.2F) * 0.7F, false);
-				world.addParticleClient(packet.explosionParticle(), center.x, center.y, center.z, 1.0, 0.0, 0.0);
-				world.addBlockParticleEffects(center, packet.radius(), packet.blockCount(), packet.blockParticles());
+				world.addParticle(packet.explosionParticle(), center.x, center.y, center.z, 1.0, 0.0, 0.0);
+				world.trackExplosionEffects(center, packet.radius(), packet.blockCount(), packet.blockParticles());
 			}
 			case RecordedEvent.EntityStatus e -> {
 				Entity entity = puppetEntity(e.entityId());
@@ -626,50 +625,50 @@ public final class Replay {
 				switch (e.status()) {
 					case 35 -> {
 						// Totem of undying; vanilla handles this status outside the entity.
-						client.particleManager.addEmitter(entity, ParticleTypes.TOTEM_OF_UNDYING, 30);
-						world.playSoundClient(entity.getX(), entity.getY(), entity.getZ(), SoundEvents.ITEM_TOTEM_USE, entity.getSoundCategory(), 1.0F, 1.0F, false);
+						client.particleEngine.createTrackingEmitter(entity, ParticleTypes.TOTEM_OF_UNDYING, 30);
+						world.playLocalSound(entity.getX(), entity.getY(), entity.getZ(), SoundEvents.TOTEM_USE, entity.getSoundSource(), 1.0F, 1.0F, false);
 					}
 					case 21, 63 -> {
 						// Looping guardian / sniffer sounds: not worth leaving a sound loop behind.
 					}
-					default -> entity.handleStatus(e.status());
+					default -> entity.handleEntityEvent(e.status());
 				}
 			}
 			case RecordedEvent.EntityAnimation e -> {
 				Entity entity = puppetEntity(e.entityId());
 				if (entity != null) {
-					client.particleManager.addEmitter(entity, e.animationId() == EntityAnimationS2CPacket.CRIT ? ParticleTypes.CRIT : ParticleTypes.ENCHANTED_HIT);
+					client.particleEngine.createTrackingEmitter(entity, e.animationId() == ClientboundAnimatePacket.CRITICAL_HIT ? ParticleTypes.CRIT : ParticleTypes.ENCHANTED_HIT);
 				}
 			}
 			case RecordedEvent.EntityDamage e -> {
 				Entity entity = puppetEntity(e.packet().entityId());
 				if (entity != null) {
-					entity.onDamaged(e.packet().createDamageSource(world));
+					entity.handleDamageEvent(e.packet().getSource(world));
 				}
 			}
 			case RecordedEvent.BlockBreaking e -> {
-				world.setBlockBreakingInfo(e.packet().getEntityId(), e.packet().getPos(), e.packet().getProgress());
-				BLOCK_BREAKS.add(new BlockBreak(e.packet().getEntityId(), e.packet().getPos()));
+				world.destroyBlockProgress(e.packet().getId(), e.packet().getPos(), e.packet().getProgress());
+				BLOCK_BREAKS.add(new BlockBreak(e.packet().getId(), e.packet().getPos()));
 			}
 		}
 	}
 
 	/** Same as the vanilla particle packet handler. */
-	private static void playParticles(ParticleS2CPacket packet) {
+	private static void playParticles(ClientboundLevelParticlesPacket packet) {
 		if (packet.getCount() == 0) {
-			world.addParticleClient(packet.getParameters(), packet.shouldForceSpawn(), packet.isImportant(), packet.getX(), packet.getY(), packet.getZ(),
-				packet.getSpeed() * packet.getOffsetX(), packet.getSpeed() * packet.getOffsetY(), packet.getSpeed() * packet.getOffsetZ());
+			world.addParticle(packet.getParticle(), packet.isOverrideLimiter(), packet.alwaysShow(), packet.getX(), packet.getY(), packet.getZ(),
+				packet.getMaxSpeed() * packet.getXDist(), packet.getMaxSpeed() * packet.getYDist(), packet.getMaxSpeed() * packet.getZDist());
 			return;
 		}
 
 		for (int i = 0; i < packet.getCount(); i++) {
-			double x = world.random.nextGaussian() * packet.getOffsetX();
-			double y = world.random.nextGaussian() * packet.getOffsetY();
-			double z = world.random.nextGaussian() * packet.getOffsetZ();
-			double velocityX = world.random.nextGaussian() * packet.getSpeed();
-			double velocityY = world.random.nextGaussian() * packet.getSpeed();
-			double velocityZ = world.random.nextGaussian() * packet.getSpeed();
-			world.addParticleClient(packet.getParameters(), packet.shouldForceSpawn(), packet.isImportant(),
+			double x = world.random.nextGaussian() * packet.getXDist();
+			double y = world.random.nextGaussian() * packet.getYDist();
+			double z = world.random.nextGaussian() * packet.getZDist();
+			double velocityX = world.random.nextGaussian() * packet.getMaxSpeed();
+			double velocityY = world.random.nextGaussian() * packet.getMaxSpeed();
+			double velocityZ = world.random.nextGaussian() * packet.getMaxSpeed();
+			world.addParticle(packet.getParticle(), packet.isOverrideLimiter(), packet.alwaysShow(),
 				packet.getX() + x, packet.getY() + y, packet.getZ() + z, velocityX, velocityY, velocityZ);
 		}
 	}
@@ -686,7 +685,7 @@ public final class Replay {
 			return null;
 		}
 
-		MinecraftClient client = MinecraftClient.getInstance();
+		Minecraft client = Minecraft.getInstance();
 		if (stopRequested || !isStillValid(client)) {
 			// The world must not be modified in the middle of a frame; clean up on the next tick.
 			stopRequested = true;
@@ -698,7 +697,7 @@ public final class Replay {
 		}
 
 		long now = System.nanoTime();
-		double seconds = lastFrameNanos == 0L ? 0.0 : MathHelper.clamp((now - lastFrameNanos) / 1.0e9, 0.0, 0.1);
+		double seconds = lastFrameNanos == 0L ? 0.0 : Mth.clamp((now - lastFrameNanos) / 1.0e9, 0.0, 0.1);
 		lastFrameNanos = now;
 
 		CameraInput.State input = INPUT_STATE;
@@ -714,14 +713,14 @@ public final class Replay {
 		float pitchDelta = input.pitchDelta + SYNTHETIC_INPUT.pitchDelta * (float) seconds;
 		Entity player = getPlayerPuppet();
 		if (player != null) {
-			lastTarget = player.getLerpedPos(tickProgress).add(0.0, player.getStandingEyeHeight(), 0.0);
+			lastTarget = player.getPosition(tickProgress).add(0.0, player.getEyeHeight(), 0.0);
 		}
 
 		switch (view) {
 			case FIRST_PERSON -> {
 				CAMERA.setPos(lastTarget);
 				if (player != null) {
-					CAMERA.setRotation(player.getYaw(tickProgress), player.getPitch(tickProgress));
+					CAMERA.setRotation(player.getViewYRot(tickProgress), player.getViewXRot(tickProgress));
 				}
 			}
 			case THIRD_PERSON -> {
@@ -730,9 +729,9 @@ public final class Replay {
 			}
 			case FREE -> {
 				CAMERA.rotate(yawDelta, pitchDelta);
-				double forward = MathHelper.clamp(input.forward + SYNTHETIC_INPUT.forward, -1.0, 1.0);
-				double strafe = MathHelper.clamp(input.strafe + SYNTHETIC_INPUT.strafe, -1.0, 1.0);
-				double up = MathHelper.clamp(input.up + SYNTHETIC_INPUT.up, -1.0, 1.0);
+				double forward = Mth.clamp(input.forward + SYNTHETIC_INPUT.forward, -1.0, 1.0);
+				double strafe = Mth.clamp(input.strafe + SYNTHETIC_INPUT.strafe, -1.0, 1.0);
+				double up = Mth.clamp(input.up + SYNTHETIC_INPUT.up, -1.0, 1.0);
 				double speed = flySpeed * (input.sprint || SYNTHETIC_INPUT.sprint ? SPRINT_MULTIPLIER : 1.0);
 				CAMERA.fly(forward, strafe, up, speed * seconds);
 			}
@@ -778,7 +777,7 @@ public final class Replay {
 	 */
 	public static void requestSeek(int target) {
 		if (isPlayback()) {
-			pendingSeek = MathHelper.clamp(target, 0, recording.tickCount() - 1);
+			pendingSeek = Mth.clamp(target, 0, recording.tickCount() - 1);
 		}
 	}
 
@@ -797,14 +796,14 @@ public final class Replay {
 	/** Mouse wheel: leash length in third person, flight speed in free view. */
 	public static void scroll(double amount) {
 		if (view == ReplayView.FREE) {
-			flySpeed = MathHelper.clamp(flySpeed * Math.pow(1.2, amount), MIN_FLY_SPEED, MAX_FLY_SPEED);
+			flySpeed = Mth.clamp(flySpeed * Math.pow(1.2, amount), MIN_FLY_SPEED, MAX_FLY_SPEED);
 		} else if (view == ReplayView.THIRD_PERSON) {
-			distance = MathHelper.clamp(distance * Math.pow(0.85, amount), MIN_DISTANCE, MAX_DISTANCE);
+			distance = Mth.clamp(distance * Math.pow(0.85, amount), MIN_DISTANCE, MAX_DISTANCE);
 		}
 	}
 
 	/** Movement keys steer the camera while the replay screen is open. */
-	static void setControlling(MinecraftClient client, boolean value) {
+	static void setControlling(Minecraft client, boolean value) {
 		controlling = value && isPlayback();
 		if (!controlling) {
 			INPUT.releaseMouse(client);
@@ -812,7 +811,7 @@ public final class Replay {
 	}
 
 	/** The mouse turns the camera only while it is held for that (right button on the replay screen). */
-	static void setLooking(MinecraftClient client, boolean looking) {
+	static void setLooking(Minecraft client, boolean looking) {
 		if (looking && controlling) {
 			INPUT.grabMouse(client);
 		} else {

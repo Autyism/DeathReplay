@@ -1,8 +1,8 @@
 package io.github.autyism.deathreplay.mixin;
 
 import io.github.autyism.deathreplay.camera.CameraOverride;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.client.option.Perspective;
+import net.minecraft.client.CameraType;
+import net.minecraft.client.Options;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,12 +14,12 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
  * The stored perspective setting is never touched, so the player's own F5 choice is back
  * automatically when the override ends.
  */
-@Mixin(GameOptions.class)
+@Mixin(Options.class)
 public abstract class GameOptionsMixin {
-	@Inject(method = "getPerspective", at = @At("HEAD"), cancellable = true)
-	private void deathreplay$thirdPersonWhileDetached(CallbackInfoReturnable<Perspective> cir) {
+	@Inject(method = "getCameraType", at = @At("HEAD"), cancellable = true)
+	private void deathreplay$thirdPersonWhileDetached(CallbackInfoReturnable<CameraType> cir) {
 		if (CameraOverride.isActive()) {
-			cir.setReturnValue(Perspective.THIRD_PERSON_BACK);
+			cir.setReturnValue(CameraType.THIRD_PERSON_BACK);
 		}
 	}
 }

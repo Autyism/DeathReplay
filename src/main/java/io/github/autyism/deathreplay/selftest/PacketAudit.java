@@ -3,8 +3,7 @@ package io.github.autyism.deathreplay.selftest;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-
-import net.minecraft.network.packet.Packet;
+import net.minecraft.network.protocol.Packet;
 
 /**
  * Counts the packets the client sends to the server while the self-test asks for it, so the

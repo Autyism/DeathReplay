@@ -4,14 +4,14 @@ import io.github.autyism.deathreplay.record.Recording;
 import io.github.autyism.deathreplay.record.ReplayFileWriter;
 import io.github.autyism.deathreplay.waypoint.WaypointHud;
 import io.github.autyism.deathreplay.waypoint.Waypoints;
-import net.minecraft.client.gui.Click;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.screen.DeathScreen;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.input.KeyInput;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.DeathScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.Mth;
 import org.jetbrains.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
@@ -43,9 +43,9 @@ public class ReplayScreen extends Screen {
 	/** Screen to go back to; {@code null} means "back to the game". */
 	@Nullable
 	private final Screen parent;
-	private ButtonWidget playButton;
-	private ButtonWidget viewButton;
-	private ButtonWidget saveButton;
+	private Button playButton;
+	private Button viewButton;
+	private Button saveButton;
 	/** True while the left mouse button is dragging the timeline. */
 	private boolean scrubbing;
 	private boolean wasPlayingBeforeScrub;
@@ -54,17 +54,17 @@ public class ReplayScreen extends Screen {
 	private float rightPressYaw;
 	private float rightPressPitch;
 	@Nullable
-	private Text notice;
+	private Component notice;
 	private int noticeTicksLeft;
 
 	public ReplayScreen(@Nullable Screen parent) {
-		super(Text.translatable("deathreplay.replay.title"));
+		super(Component.translatable("deathreplay.replay.title"));
 		this.parent = parent;
 	}
 
 	@Override
 	protected void init() {
-		Replay.setControlling(this.client, true);
+		Replay.setControlling(this.minecraft, true);
 
 		int count = 5;
 		int buttonWidth = Math.min(MAX_BUTTON_WIDTH, (this.width - 16 - BUTTON_GAP * (count - 1)) / count);
@@ -72,47 +72,47 @@ public class ReplayScreen extends Screen {
 		int y = this.height - BUTTON_HEIGHT - 6;
 		int step = buttonWidth + BUTTON_GAP;
 
-		this.addDrawableChild(this.button(Text.translatable("deathreplay.replay.button.restart"), x, y, buttonWidth, Replay::restart));
-		this.playButton = this.addDrawableChild(this.button(Text.empty(), x + step, y, buttonWidth, Replay::togglePlaying));
-		this.viewButton = this.addDrawableChild(this.button(Text.empty(), x + step * 2, y, buttonWidth, Replay::cycleView));
-		this.saveButton = this.addDrawableChild(this.button(Text.empty(), x + step * 3, y, buttonWidth, () -> {
+		this.addRenderableWidget(this.button(Component.translatable("deathreplay.replay.button.restart"), x, y, buttonWidth, Replay::restart));
+		this.playButton = this.addRenderableWidget(this.button(Component.empty(), x + step, y, buttonWidth, Replay::togglePlaying));
+		this.viewButton = this.addRenderableWidget(this.button(Component.empty(), x + step * 2, y, buttonWidth, Replay::cycleView));
+		this.saveButton = this.addRenderableWidget(this.button(Component.empty(), x + step * 3, y, buttonWidth, () -> {
 			Recording recording = Replay.getRecording();
 			if (recording != null) {
-				ReplayFileWriter.saveAndAnnounce(this.client, recording);
+				ReplayFileWriter.saveAndAnnounce(this.minecraft, recording);
 			}
 		}));
-		this.addDrawableChild(this.button(Text.translatable("deathreplay.replay.button.close"), x + step * 4, y, buttonWidth, this::close));
+		this.addRenderableWidget(this.button(Component.translatable("deathreplay.replay.button.close"), x + step * 4, y, buttonWidth, this::onClose));
 		this.refreshButtons();
 	}
 
-	private ButtonWidget button(Text label, int x, int y, int width, Runnable action) {
-		return ButtonWidget.builder(label, pressed -> {
+	private Button button(Component label, int x, int y, int width, Runnable action) {
+		return Button.builder(label, pressed -> {
 			action.run();
 			// A focused button would swallow Space and Enter, which fly the camera and pause.
 			this.setFocused(null);
-		}).dimensions(x, y, width, BUTTON_HEIGHT).build();
+		}).bounds(x, y, width, BUTTON_HEIGHT).build();
 	}
 
 	private void refreshButtons() {
 		Recording recording = Replay.getRecording();
-		this.playButton.setMessage(Text.translatable(Replay.isPlaying() ? "deathreplay.replay.button.pause" : "deathreplay.replay.button.play"));
+		this.playButton.setMessage(Component.translatable(Replay.isPlaying() ? "deathreplay.replay.button.pause" : "deathreplay.replay.button.play"));
 		this.viewButton.setMessage(Replay.getView().getDisplayName());
 		boolean saved = recording != null && ReplayFileWriter.isSaved(recording);
-		this.saveButton.setMessage(Text.translatable(saved ? "deathreplay.replay.button.saved" : "deathreplay.replay.button.save"));
+		this.saveButton.setMessage(Component.translatable(saved ? "deathreplay.replay.button.saved" : "deathreplay.replay.button.save"));
 		this.saveButton.active = recording != null && !saved && !ReplayFileWriter.isSaving(recording);
 	}
 
 	@Override
 	public void removed() {
 		// Whatever replaces this screen, the real world goes back on screen first.
-		Replay.endPlayback(this.client);
+		Replay.endPlayback(this.minecraft);
 	}
 
 	@Override
 	public void tick() {
 		if (!Replay.isPlayback()) {
 			// The replay ended by itself (respawn, disconnect...): let vanilla pick the next screen.
-			this.client.setScreen(null);
+			this.minecraft.setScreen(null);
 			return;
 		}
 
@@ -122,9 +122,9 @@ public class ReplayScreen extends Screen {
 	}
 
 	@Override
-	public void close() {
+	public void onClose() {
 		// null lets vanilla decide: the death screen if the player is dead, the game otherwise.
-		this.client.setScreen(this.client.player != null && this.client.player.isDead() ? this.deathScreenOrNull() : this.parent);
+		this.minecraft.setScreen(this.minecraft.player != null && this.minecraft.player.isDeadOrDying() ? this.deathScreenOrNull() : this.parent);
 	}
 
 	@Nullable
@@ -154,14 +154,14 @@ public class ReplayScreen extends Screen {
 			return 0;
 		}
 
-		double fraction = MathHelper.clamp((mouseX - this.barLeft()) / this.barWidth(), 0.0, 1.0);
+		double fraction = Mth.clamp((mouseX - this.barLeft()) / this.barWidth(), 0.0, 1.0);
 		return (int) Math.round(fraction * (recording.tickCount() - 1));
 	}
 
 	// ---------------------------------------------------------------- input
 
 	@Override
-	public boolean mouseClicked(Click click, boolean doubled) {
+	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
 		if (super.mouseClicked(click, doubled)) {
 			return true;
 		}
@@ -178,7 +178,7 @@ public class ReplayScreen extends Screen {
 			this.rightPressNanos = System.nanoTime();
 			this.rightPressYaw = Replay.getCamera().getYaw();
 			this.rightPressPitch = Replay.getCamera().getPitch();
-			Replay.setLooking(this.client, true);
+			Replay.setLooking(this.minecraft, true);
 			return true;
 		}
 
@@ -186,7 +186,7 @@ public class ReplayScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseDragged(Click click, double offsetX, double offsetY) {
+	public boolean mouseDragged(MouseButtonEvent click, double offsetX, double offsetY) {
 		if (this.scrubbing && click.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT) {
 			Replay.requestSeek(this.tickAt(click.x()));
 			return true;
@@ -196,7 +196,7 @@ public class ReplayScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseReleased(Click click) {
+	public boolean mouseReleased(MouseButtonEvent click) {
 		if (click.button() == GLFW.GLFW_MOUSE_BUTTON_LEFT && this.scrubbing) {
 			this.scrubbing = false;
 			if (this.wasPlayingBeforeScrub) {
@@ -207,15 +207,15 @@ public class ReplayScreen extends Screen {
 		}
 
 		if (click.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
-			Replay.setLooking(this.client, false);
+			Replay.setLooking(this.minecraft, false);
 			boolean quick = System.nanoTime() - this.rightPressNanos < MARK_CLICK_NANOS;
 			boolean still = Math.abs(Replay.getCamera().getYaw() - this.rightPressYaw) + Math.abs(Replay.getCamera().getPitch() - this.rightPressPitch) < MARK_CLICK_DEGREES;
 			if (quick && still && Replay.getStage() != null) {
 				// What the cursor is on, not what the centre of the screen is on: the cursor is free here.
-				Waypoints.Marker marker = Waypoints.addFromCamera(this.client, Replay.getStage(), Replay.getCamera(),
+				Waypoints.Marker marker = Waypoints.addFromCamera(this.minecraft, Replay.getStage(), Replay.getCamera(),
 					click.x() / this.width * 2.0 - 1.0, 1.0 - click.y() / this.height * 2.0);
 				if (marker != null) {
-					this.notice = Text.translatable("deathreplay.waypoint.added", marker.name, marker.x, marker.y, marker.z);
+					this.notice = Component.translatable("deathreplay.waypoint.added", marker.name, marker.x, marker.y, marker.z);
 					this.noticeTicksLeft = NOTICE_TICKS;
 				}
 			}
@@ -233,8 +233,8 @@ public class ReplayScreen extends Screen {
 	}
 
 	@Override
-	public boolean keyPressed(KeyInput input) {
-		if (this.client.options.togglePerspectiveKey.matchesKey(input)) {
+	public boolean keyPressed(KeyEvent input) {
+		if (this.minecraft.options.keyTogglePerspective.matches(input)) {
 			Replay.cycleView();
 			return true;
 		}
@@ -255,7 +255,7 @@ public class ReplayScreen extends Screen {
 	// ---------------------------------------------------------------- drawing
 
 	@Override
-	public void render(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+	public void render(GuiGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		Recording recording = Replay.getRecording();
 		if (recording == null) {
 			return;
@@ -268,8 +268,8 @@ public class ReplayScreen extends Screen {
 		int tick = Replay.getTick();
 		int lastTick = Math.max(1, recording.tickCount() - 1);
 
-		Text state = Text.translatable(Replay.isPlaying() ? "deathreplay.replay.playing" : Replay.isAtEnd() ? "deathreplay.replay.ended" : "deathreplay.replay.paused");
-		context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.replay.header", state, Replay.getView().getDisplayName()), centerX, 8, TEXT_COLOR);
+		Component state = Component.translatable(Replay.isPlaying() ? "deathreplay.replay.playing" : Replay.isAtEnd() ? "deathreplay.replay.ended" : "deathreplay.replay.paused");
+		context.drawCenteredString(this.font, Component.translatable("deathreplay.replay.header", state, Replay.getView().getDisplayName()), centerX, 8, TEXT_COLOR);
 
 		// Timeline: white = played so far, red mark = the moment of death, knob = where we are.
 		int barWidth = this.barWidth();
@@ -282,33 +282,33 @@ public class ReplayScreen extends Screen {
 		context.fill(knobX - 1, BAR_TOP - 3, knobX + 2, BAR_TOP + BAR_HEIGHT + 3, BAR_FILL);
 
 		float toDeath = (tick - recording.deathFrame()) / (float) Recording.TICKS_PER_SECOND;
-		Text time = toDeath <= 0.0F
-			? Text.translatable("deathreplay.replay.time.before", String.format("%.1f", -toDeath))
-			: Text.translatable("deathreplay.replay.time.after", String.format("%.1f", toDeath));
-		context.drawCenteredTextWithShadow(this.textRenderer, time, centerX, BAR_TOP + BAR_HEIGHT + 6, TEXT_COLOR);
+		Component time = toDeath <= 0.0F
+			? Component.translatable("deathreplay.replay.time.before", String.format("%.1f", -toDeath))
+			: Component.translatable("deathreplay.replay.time.after", String.format("%.1f", toDeath));
+		context.drawCenteredString(this.font, time, centerX, BAR_TOP + BAR_HEIGHT + 6, TEXT_COLOR);
 
-		Text perspectiveKey = this.client.options.togglePerspectiveKey.getBoundKeyLocalizedText();
-		Text viewHint = switch (Replay.getView()) {
-			case FIRST_PERSON -> Text.translatable("deathreplay.replay.hint.first_person", perspectiveKey);
-			case THIRD_PERSON -> Text.translatable("deathreplay.replay.hint.third_person", perspectiveKey);
-			case FREE -> Text.translatable("deathreplay.replay.hint.free", perspectiveKey);
+		Component perspectiveKey = this.minecraft.options.keyTogglePerspective.getTranslatedKeyMessage();
+		Component viewHint = switch (Replay.getView()) {
+			case FIRST_PERSON -> Component.translatable("deathreplay.replay.hint.first_person", perspectiveKey);
+			case THIRD_PERSON -> Component.translatable("deathreplay.replay.hint.third_person", perspectiveKey);
+			case FREE -> Component.translatable("deathreplay.replay.hint.free", perspectiveKey);
 		};
-		context.drawCenteredTextWithShadow(this.textRenderer, viewHint, centerX, this.height - BUTTON_HEIGHT - 20, HINT_COLOR);
-		context.drawCenteredTextWithShadow(this.textRenderer, Text.translatable("deathreplay.replay.hint.mark"), centerX, this.height - BUTTON_HEIGHT - 32, HINT_COLOR);
+		context.drawCenteredString(this.font, viewHint, centerX, this.height - BUTTON_HEIGHT - 20, HINT_COLOR);
+		context.drawCenteredString(this.font, Component.translatable("deathreplay.replay.hint.mark"), centerX, this.height - BUTTON_HEIGHT - 32, HINT_COLOR);
 
-		WaypointHud.render(context, this.client, recording.dimension());
+		WaypointHud.render(context, this.minecraft, recording.dimension());
 		if (this.notice != null && this.noticeTicksLeft > 0) {
-			context.drawCenteredTextWithShadow(this.textRenderer, this.notice, centerX, BAR_TOP + BAR_HEIGHT + 20, NOTICE_COLOR);
+			context.drawCenteredString(this.font, this.notice, centerX, BAR_TOP + BAR_HEIGHT + 20, NOTICE_COLOR);
 		}
 	}
 
 	@Override
-	public void renderBackground(DrawContext context, int mouseX, int mouseY, float deltaTicks) {
+	public void renderBackground(GuiGraphics context, int mouseX, int mouseY, float deltaTicks) {
 		// No blur, no dimming: the replay is the content.
 	}
 
 	@Override
-	public boolean shouldPause() {
+	public boolean isPauseScreen() {
 		return false;
 	}
 }

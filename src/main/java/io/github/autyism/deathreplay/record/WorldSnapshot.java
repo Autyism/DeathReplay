@@ -2,19 +2,18 @@ package io.github.autyism.deathreplay.record;
 
 import java.util.ArrayList;
 import java.util.List;
-
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.core.Holder;
+import net.minecraft.network.protocol.game.ClientboundLevelChunkWithLightPacket;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.dimension.DimensionType;
 import io.github.autyism.deathreplay.mixin.BiomeAccessAccessor;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.network.packet.s2c.play.ChunkDataS2CPacket;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.entry.RegistryEntry;
-import net.minecraft.util.math.ChunkPos;
-import net.minecraft.world.World;
-import net.minecraft.world.chunk.WorldChunk;
-import net.minecraft.world.dimension.DimensionType;
 
 /**
  * The terrain a recording needs, as the client had it at the end of the recording.
@@ -44,8 +43,8 @@ import net.minecraft.world.dimension.DimensionType;
  * @param chunks        the chunks themselves
  */
 public record WorldSnapshot(
-	RegistryKey<World> dimension,
-	RegistryEntry<DimensionType> dimensionType,
+	ResourceKey<Level> dimension,
+	Holder<DimensionType> dimensionType,
 	long biomeSeed,
 	int seaLevel,
 	boolean flat,
@@ -56,7 +55,7 @@ public record WorldSnapshot(
 	int centerChunkX,
 	int centerChunkZ,
 	int radius,
-	List<ChunkDataS2CPacket> chunks
+	List<ClientboundLevelChunkWithLightPacket> chunks
 ) {
 	/** Chunks kept around the place of death, whatever the render distance. */
 	public static final int MAX_RADIUS = 8;
@@ -72,7 +71,7 @@ public record WorldSnapshot(
 	 *                     they were unloaded, by {@link ChunkPos#toLong()}
 	 * @param viewDistance the client's render distance; nothing beyond it is kept
 	 */
-	public static WorldSnapshot capture(ClientWorld world, ChunkPos death, List<ChunkPos> route, Long2ObjectMap<ChunkDataS2CPacket> unloaded, int viewDistance) {
+	public static WorldSnapshot capture(ClientLevel world, ChunkPos death, List<ChunkPos> route, Long2ObjectMap<ClientboundLevelChunkWithLightPacket> unloaded, int viewDistance) {
 		int deathRadius = Math.min(MAX_RADIUS, viewDistance);
 		int pathRadius = Math.min(PATH_RADIUS, viewDistance);
 		LongSet wanted = wantedChunks(death, deathRadius, route, pathRadius);
@@ -81,16 +80,16 @@ public record WorldSnapshot(
 			wanted = wantedChunks(death, deathRadius, route, pathRadius);
 		}
 
-		List<ChunkDataS2CPacket> chunks = new ArrayList<>();
+		List<ClientboundLevelChunkWithLightPacket> chunks = new ArrayList<>();
 		int minX = death.x;
 		int maxX = death.x;
 		int minZ = death.z;
 		int maxZ = death.z;
 		for (long packed : wanted) {
-			int x = ChunkPos.getPackedX(packed);
-			int z = ChunkPos.getPackedZ(packed);
-			WorldChunk chunk = world.getChunkManager().getWorldChunk(x, z, false);
-			ChunkDataS2CPacket packet = chunk != null ? new ChunkDataS2CPacket(chunk, world.getLightingProvider(), null, null) : unloaded.get(packed);
+			int x = ChunkPos.getX(packed);
+			int z = ChunkPos.getZ(packed);
+			LevelChunk chunk = world.getChunkSource().getChunk(x, z, false);
+			ClientboundLevelChunkWithLightPacket packet = chunk != null ? new ClientboundLevelChunkWithLightPacket(chunk, world.getLightEngine(), null, null) : unloaded.get(packed);
 			if (packet == null) {
 				continue;
 			}
@@ -103,15 +102,15 @@ public record WorldSnapshot(
 		}
 
 		return new WorldSnapshot(
-			world.getRegistryKey(),
-			world.getDimensionEntry(),
-			((BiomeAccessAccessor) world.getBiomeAccess()).deathreplay$getSeed(),
+			world.dimension(),
+			world.dimensionTypeRegistration(),
+			((BiomeAccessAccessor) world.getBiomeManager()).deathreplay$getSeed(),
 			world.getSeaLevel(),
-			world.getLevelProperties().getVoidDarknessRange() == 1.0F,
-			world.getTime(),
-			world.getTimeOfDay(),
-			world.getRainGradient(1.0F),
-			world.getThunderGradient(1.0F),
+			world.getLevelData().voidDarknessOnsetRange() == 1.0F,
+			world.getGameTime(),
+			world.getDayTime(),
+			world.getRainLevel(1.0F),
+			world.getThunderLevel(1.0F),
 			(minX + maxX) / 2,
 			(minZ + maxZ) / 2,
 			Math.max(maxX - minX, maxZ - minZ) / 2 + 1,
@@ -132,7 +131,7 @@ public record WorldSnapshot(
 	private static void addSquare(LongSet set, ChunkPos center, int radius) {
 		for (int x = center.x - radius; x <= center.x + radius; x++) {
 			for (int z = center.z - radius; z <= center.z + radius; z++) {
-				set.add(ChunkPos.toLong(x, z));
+				set.add(ChunkPos.asLong(x, z));
 			}
 		}
 	}

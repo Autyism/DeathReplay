@@ -2,11 +2,10 @@ package io.github.autyism.deathreplay.record;
 
 import java.util.List;
 import java.util.UUID;
-
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.World;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.phys.Vec3;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -30,14 +29,14 @@ public record Recording(
 	String playerName,
 	UUID playerUuid,
 	WorldSnapshot snapshot,
-	Vec3d deathPos,
-	@Nullable Text deathMessage,
+	Vec3 deathPos,
+	@Nullable Component deathMessage,
 	long deathTimeMillis
 ) {
 	public static final int TICKS_PER_SECOND = 20;
 
 	/** Dimension the death happened in. */
-	public RegistryKey<World> dimension() {
+	public ResourceKey<Level> dimension() {
 		return this.snapshot.dimension();
 	}
 
