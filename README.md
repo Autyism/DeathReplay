@@ -5,13 +5,23 @@
 
 <p align="center"><a href="#english">English</a> · <a href="#简体中文">简体中文</a></p>
 
-![Minecraft 1.21.11](https://img.shields.io/badge/Minecraft-1.21.11-62B47A) ![Fabric](https://img.shields.io/badge/Loader-Fabric-DBD0B4) ![Client-side](https://img.shields.io/badge/Side-Client-5B8DEF) ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
+![Minecraft 1.21.11 | 26.1–26.1.2](https://img.shields.io/badge/Minecraft-1.21.11_%7C_26.1--26.1.2-62B47A) ![Fabric](https://img.shields.io/badge/Loader-Fabric-DBD0B4) ![Client-side](https://img.shields.io/badge/Side-Client-5B8DEF) ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
 # English
 
+**In short**
+
+- Rewatch the last seconds before you died, from any angle.
+- The death screen camera lets you look around freely.
+- Save replays and watch them again later (F6).
+- Client-side only; your world is never changed.
+
+Everything else is in the folded sections below (features, how to use, settings, FAQ): click a title to open it.
+
 Death Replay is a client-side Fabric mod. While you play, it keeps a short rolling recording of what happens around you. When you die, you can watch those last seconds again from any angle, save them to a file, and drop markers, for example where your items fell. It only uses what the server already sends to your game, and it sends nothing back.
 
-## Features
+<details>
+<summary><b>Features</b> (click to open)</summary>
 
 ### Death replay
 
@@ -43,6 +53,8 @@ Death Replay is a client-side Fabric mod. While you play, it keeps a short rolli
 - **It sends nothing.** Death Replay itself sends no packets to the server and registers no network channels. It does not change gameplay or press any keys for you.
 - **Nothing live after respawning.** The moment you respawn, the camera is back on your player. After that, all you can watch is the recording, which ends 0.75 seconds after your death (or at the moment you respawn, if that comes first).
 - **Respawning works exactly as in vanilla.** The mod never delays or holds back your respawn.
+
+</details>
 
 ## Screenshots
 
@@ -78,7 +90,8 @@ After respawning, the marker shows its name and distance. The bar above the hotb
 
 The settings screen with its default values.
 
-## How to use
+<details>
+<summary><b>How to use</b> (click to open)</summary>
 
 ### Keys
 
@@ -165,7 +178,10 @@ Death Replay has no commands.
 - A marker lands on the surface of the block you aim at, up to 256 blocks away; if there is nothing in that direction, it is placed where the camera is. Markers are named automatically (Marker 1, Marker 2, ...) and only show in the dimension they belong to.
 - Settings are stored in `config/deathreplay.json`, markers in `config/deathreplay-waypoints.json`.
 
-## Settings
+</details>
+
+<details>
+<summary><b>Settings</b> (click to open)</summary>
 
 | Option (as shown in game) | Default | What it does |
 |---|---|---|
@@ -178,11 +194,13 @@ Death Replay has no commands.
 
 The settings screen also has **Saved Replays...** and **Markers...** buttons. Hover over an option to see a short explanation. Changes apply immediately and are saved when you close the screen.
 
+</details>
+
 ## Requirements
 
 | | |
 |---|---|
-| Minecraft | Java Edition 1.21.11 |
+| Minecraft | Java Edition 1.21.11 or 26.1–26.1.2 (each has its own jar; 26.1.x needs Java 25) |
 | Mod loader | Fabric Loader 0.19.5 or newer |
 | Fabric API | Required |
 | Java | 21 or newer |
@@ -190,7 +208,8 @@ The settings screen also has **Saved Replays...** and **Markers...** buttons. Ho
 
 Death Replay is client-side only. Install it in your own game; servers do not need it.
 
-## Compatibility
+<details>
+<summary><b>Compatibility</b> (click to open)</summary>
 
 - **Sodium:** works. Tested with Sodium 0.8.7.
 - **Iris and shader packs:** not tested yet. Reports are welcome.
@@ -200,15 +219,18 @@ Death Replay is client-side only. Install it in your own game; servers do not ne
 - **ERTZ Death Replay:** a different mod with the same name. Both change the death screen, so this mod declares it incompatible (its mod ID is `deathreplay`); install only one of the two.
 - **Replays with modded content:** a saved replay that contains blocks or mobs from other mods may not open where those mods are missing. You get a message, not a crash.
 
+</details>
+
 ## Installation
 
-1. Install Fabric Loader 0.19.5 or newer for Minecraft 1.21.11.
-2. Download Fabric API for 1.21.11 and put it in your `mods` folder.
-3. Put the Death Replay jar in the same `mods` folder.
+1. Install Fabric Loader 0.19.5 or newer for your Minecraft version.
+2. Download Fabric API for that version and put it in your `mods` folder.
+3. Put the Death Replay jar for your version in the same `mods` folder: `deathreplay-0.1.0.jar` for 1.21.11, `deathreplay-0.1.0+26.1.2.jar` for 26.1–26.1.2.
 4. Optional: add Mod Menu to open the settings from the mod list.
 5. Start the game with the Fabric profile.
 
-## FAQ
+<details>
+<summary><b>FAQ</b> (click to open)</summary>
 
 **Does it send anything to the server? Is it allowed?**
 Death Replay itself sends nothing to the server and registers no network channels; it only replays what your game already received. Whether a death screen free camera is allowed is decided by each server's rules.
@@ -243,7 +265,10 @@ It was saved by another Minecraft version, the file is damaged, or it contains c
 **Does it cost performance?**
 It records data, not video. Measured on a flat world, recording took about 0.02 ms per game tick on average with about 30 entities nearby and about 0.07 ms with about 180 (a game tick lasts 50 ms). At the moment of death it copies the terrain once, which took about 3 ms on a flat world; busier terrain takes longer. Opening and closing a replay rebuilds the chunk display once, similar to pressing F3 + A.
 
-## Known limitations
+</details>
+
+<details>
+<summary><b>Known limitations</b> (click to open)</summary>
 
 - Replays play at normal speed only; there is no slow motion or fast-forward.
 - First-person replays do not show your hand or the item you were holding.
@@ -259,6 +284,8 @@ It records data, not video. Measured on a flat world, recording took about 0.02 
 - The latest recording is kept in memory only until your next death or until you leave the world or server. Save it to keep it.
 - Replays can only be watched while you are in a world, and saved files only open in the Minecraft version they were saved with.
 
+</details>
+
 ## Credits
 
 Death Replay is an original mod written from scratch by Autyism; it is not based on another mod. It is built on Fabric and Fabric API and has an optional Mod Menu integration.
@@ -271,11 +298,21 @@ Source code and issue tracker: [github.com/Autyism/DeathReplay](https://github.c
 
 # 简体中文
 
+**一句话看懂**
+
+- 回看死前的最后几秒，任意角度。
+- 死亡界面可以自由转动视角四处看。
+- 回放能保存，之后按 F6 再看。
+- 纯客户端，不会改动你的世界。
+
+详细说明都在下面折叠起来的部分（功能、使用方法、设置、常见问题），点标题就能展开。
+
 **Death Replay（死亡回放）**
 
 Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它会一直滚动记录身边最近发生的事。死了以后，你可以从任意角度把这几秒重新看一遍、保存成文件，还可以在现场留下标记（比如东西掉在哪）。它只用服务器本来就发给你的数据，不向服务器发送任何东西。
 
-## 功能
+<details>
+<summary><b>功能</b>（点开查看）</summary>
 
 ### 死前回放
 
@@ -307,6 +344,8 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 - **不发送任何东西。** 模组本身不向服务器发送任何数据包，也不注册任何网络频道；不改变玩法，也不替你按任何键。
 - **重生后看不到实时画面。** 一重生，镜头立刻回到你的角色身上。之后能看的只有录像，录像在死亡后 0.75 秒结束（如果在这之前就重生了，就截止到重生那一刻）。
 - **重生和原版完全一样。** 模组从不延迟或拦下你的重生。
+
+</details>
 
 ## 截图
 
@@ -342,7 +381,8 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 
 设置界面（均为默认值）。
 
-## 使用方法
+<details>
+<summary><b>使用方法</b>（点开查看）</summary>
 
 ### 按键
 
@@ -429,7 +469,10 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 - 标记会落在你对准的方块表面上，最远 256 格；如果那个方向什么都没有，就放在镜头所在的位置。标记会自动命名（标记 1、标记 2……），只在它所在的维度里显示。
 - 设置保存在 `config/deathreplay.json`，标记保存在 `config/deathreplay-waypoints.json`。
 
-## 设置
+</details>
+
+<details>
+<summary><b>设置</b>（点开查看）</summary>
 
 | 选项（游戏内名称） | 默认值 | 作用 |
 |---|---|---|
@@ -442,11 +485,13 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 
 设置界面里还有"已保存的回放…"和"标记…"两个按钮。鼠标停在选项上会显示说明。改动立刻生效，关闭设置界面时保存。
 
+</details>
+
 ## 运行需求
 
 | | |
 |---|---|
-| Minecraft | Java 版 1.21.11 |
+| Minecraft | Java 版 1.21.11 或 26.1–26.1.2（每个版本有单独的 jar；26.1.x 需要 Java 25） |
 | 模组加载器 | Fabric Loader 0.19.5 或更高 |
 | Fabric API | 必需（前置） |
 | Java | 21 或更高 |
@@ -454,7 +499,8 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 
 这是纯客户端模组，只需要装在你自己的游戏里，服务器不需要安装。
 
-## 兼容性
+<details>
+<summary><b>兼容性</b>（点开查看）</summary>
 
 - **Sodium（钠）：** 可以正常使用，已在 Sodium 0.8.7 下测试。
 - **Iris 和光影包：** 尚未测试，欢迎反馈。
@@ -464,15 +510,18 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 - **ERTZ Death Replay：** 另一个同名模组。两者都会改死亡界面，所以本模组声明与它不兼容（它的模组 ID 是 `deathreplay`），两个只能装一个。
 - **含其他模组内容的回放：** 如果保存的回放里有其他模组的方块或生物，在缺少这些模组的地方可能打不开。这时会显示提示，不会崩溃。
 
+</details>
+
 ## 安装
 
-1. 为 Minecraft 1.21.11 安装 Fabric Loader 0.19.5 或更高版本。
-2. 下载适用于 1.21.11 的 Fabric API，放进 `mods` 文件夹。
-3. 把 Death Replay 的 jar 也放进同一个 `mods` 文件夹。
+1. 为你的 Minecraft 版本安装 Fabric Loader 0.19.5 或更高版本。
+2. 下载这个版本的 Fabric API，放进 `mods` 文件夹。
+3. 把对应版本的 Death Replay jar 放进同一个 `mods` 文件夹：1.21.11 用 `deathreplay-0.1.0.jar`，26.1–26.1.2 用 `deathreplay-0.1.0+26.1.2.jar`。
 4. 可选：再装上 Mod Menu，就能从模组列表打开设置。
 5. 用 Fabric 版本启动游戏。
 
-## 常见问题
+<details>
+<summary><b>常见问题</b>（点开查看）</summary>
 
 **它会向服务器发送东西吗？能用吗？**
 模组本身不向服务器发送任何东西，也不注册网络频道，只是回放你的游戏已经收到的内容。服务器是否允许死亡界面自由视角，以各服务器的规则为准。
@@ -507,7 +556,10 @@ F6 只在没有打开任何界面时有效。在死亡界面上请点"回放"按
 **会影响性能吗？**
 它录的是数据而不是视频。在超平坦世界里实测：周围约 30 个实体时，录制平均每个游戏刻约 0.02 毫秒；约 180 个实体时约 0.07 毫秒（一个游戏刻是 50 毫秒）。死亡那一刻会复制一次地形，超平坦世界约 3 毫秒，地形复杂时会更久。打开和关闭回放时会重新生成一次区块画面，感觉和按 F3 + A 差不多。
 
-## 已知限制
+</details>
+
+<details>
+<summary><b>已知限制</b>（点开查看）</summary>
 
 - 回放只能以正常速度播放，没有慢放和快进。
 - 第一人称回放里看不到自己的手和手持物品。
@@ -522,6 +574,8 @@ F6 只在没有打开任何界面时有效。在死亡界面上请点"回放"按
 - 当前维度里有标记时，定位栏会代替经验条显示。
 - 最近一次的录像只保存在内存里，直到下一次死亡或你退出世界 / 服务器为止。想留着就保存成文件。
 - 只有进入世界后才能观看回放；保存的文件只能在保存它的同一个 Minecraft 版本里打开。
+
+</details>
 
 ## 致谢
 
