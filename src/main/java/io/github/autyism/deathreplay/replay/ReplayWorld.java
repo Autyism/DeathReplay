@@ -38,6 +38,17 @@ final class ReplayWorld {
 
 		WorldSnapshot snapshot = recording.snapshot();
 		ClientLevel.ClientLevelData properties = new ClientLevel.ClientLevelData(Difficulty.NORMAL, false, snapshot.flat());
+		//? if >=26.1 {
+		/*// The stage takes its stopped clocks (time of day) while it is built: see StageClocks.
+		StageClocks.prepare(handler.registryAccess(), snapshot.clocks(), snapshot.timeOfDay(), snapshot.time());
+		ClientLevel world;
+		try {
+			world = new ClientLevel(handler, properties, snapshot.dimension(), snapshot.dimensionType(), snapshot.radius() + 2,
+				SIMULATION_DISTANCE, client.levelRenderer, false, snapshot.biomeSeed(), snapshot.seaLevel());
+		} finally {
+			StageClocks.done();
+		}
+		*///?} else {
 		ClientLevel world = new ClientLevel(
 			handler,
 			properties,
@@ -50,10 +61,18 @@ final class ReplayWorld {
 			snapshot.biomeSeed(),
 			snapshot.seaLevel()
 		);
+		//?}
 		world.getChunkSource().updateViewCenter(snapshot.centerChunkX(), snapshot.centerChunkZ());
+		//? if >=26.1 {
+		/*world.setTimeFromServer(snapshot.time());
+		*///?} else
 		world.setTimeFromServer(snapshot.time(), snapshot.timeOfDay(), false);
 		world.setRainLevel(snapshot.rainGradient());
 		world.setThunderLevel(snapshot.thunderGradient());
+		//? if >=26.1 {
+		/*// Sky and light read cached values that only a ticking level refreshes; the stage never ticks.
+		world.environmentAttributes().invalidateTickCache();
+		*///?}
 
 		// The same steps the client takes for a chunk packet from the server, through the same
 		// methods. That matters: renderer mods such as Sodium keep their own list of chunks that

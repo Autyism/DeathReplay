@@ -35,6 +35,7 @@ import it.unimi.dsi.fastutil.longs.LongSet;
  * @param flat          whether the world is a superflat world (changes the horizon)
  * @param time          world age at the snapshot
  * @param timeOfDay     time of day at the snapshot
+ * @param clocks        (26.1+) every world clock at the snapshot, by clock id
  * @param rainGradient  how much it was raining, 0..1
  * @param thunderGradient how much it was thundering, 0..1
  * @param centerChunkX  middle of the area the chunks span
@@ -50,6 +51,8 @@ public record WorldSnapshot(
 	boolean flat,
 	long time,
 	long timeOfDay,
+	//? if >=26.1
+	/*java.util.Map<net.minecraft.resources.Identifier, Long> clocks,*/
 	float rainGradient,
 	float thunderGradient,
 	int centerChunkX,
@@ -81,10 +84,17 @@ public record WorldSnapshot(
 		}
 
 		List<ClientboundLevelChunkWithLightPacket> chunks = new ArrayList<>();
+		//? if >=26.1 {
+		/*int minX = death.x();
+		int maxX = death.x();
+		int minZ = death.z();
+		int maxZ = death.z();
+		*///?} else {
 		int minX = death.x;
 		int maxX = death.x;
 		int minZ = death.z;
 		int maxZ = death.z;
+		//?}
 		for (long packed : wanted) {
 			int x = ChunkPos.getX(packed);
 			int z = ChunkPos.getZ(packed);
@@ -108,6 +118,10 @@ public record WorldSnapshot(
 			world.getSeaLevel(),
 			world.getLevelData().voidDarknessOnsetRange() == 1.0F,
 			world.getGameTime(),
+			//? if >=26.1 {
+			/*world.getDefaultClockTime(),
+			io.github.autyism.deathreplay.replay.StageClocks.capture(world),
+			*///?} else
 			world.getDayTime(),
 			world.getRainLevel(1.0F),
 			world.getThunderLevel(1.0F),
@@ -129,9 +143,15 @@ public record WorldSnapshot(
 	}
 
 	private static void addSquare(LongSet set, ChunkPos center, int radius) {
+		//? if >=26.1 {
+		/*for (int x = center.x() - radius; x <= center.x() + radius; x++) {
+			for (int z = center.z() - radius; z <= center.z() + radius; z++) {
+				set.add(ChunkPos.pack(x, z));
+		*///?} else {
 		for (int x = center.x - radius; x <= center.x + radius; x++) {
 			for (int z = center.z - radius; z <= center.z + radius; z++) {
 				set.add(ChunkPos.asLong(x, z));
+		//?}
 			}
 		}
 	}
@@ -139,6 +159,9 @@ public record WorldSnapshot(
 	/** Whether {@code pos} is within {@link #PATH_RADIUS} of a chunk on {@code route}. */
 	public static boolean isNearRoute(ChunkPos pos, List<ChunkPos> route) {
 		for (ChunkPos onRoute : route) {
+			//? if >=26.1 {
+			/*if (Math.abs(onRoute.x() - pos.x()) <= PATH_RADIUS && Math.abs(onRoute.z() - pos.z()) <= PATH_RADIUS) {
+			*///?} else
 			if (Math.abs(onRoute.x - pos.x) <= PATH_RADIUS && Math.abs(onRoute.z - pos.z) <= PATH_RADIUS) {
 				return true;
 			}

@@ -15,6 +15,9 @@ import org.spongepowered.asm.mixin.injection.At;
 @Mixin(LevelRenderer.class)
 public abstract class WorldRendererMixin {
 	@ModifyExpressionValue(
+		//? if >=26.1 {
+		/*method = "update",
+		*///?} else
 		method = "renderLevel",
 		at = @At(value = "INVOKE", target = "Lnet/minecraft/client/player/LocalPlayer;isSpectator()Z")
 	)

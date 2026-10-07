@@ -56,7 +56,8 @@ import org.jetbrains.annotations.Nullable;
  * DeathTimeMillis, Dimension, DeathPos[3], DeathMessage, DeathFrame, TickCount
  * Player { Name, UUID, EntityId }
  * World { DimensionType, BiomeSeed, SeaLevel, Flat, Time, TimeOfDay, Rain, Thunder,
- *         CenterChunkX, CenterChunkZ, Radius }
+ *         CenterChunkX, CenterChunkZ, Radius,
+ *         Clocks { clock id: ticks }   (Minecraft 26.1 and later: every world clock) }
  * Chunks [ byte[] ]                   the terrain around the death, one chunk packet each
  * Entities [ { EntityId, Type, UUID, Name?, Local,
  *              Ticks int[]            frame index of each sample
@@ -199,6 +200,11 @@ public final class ReplayFileWriter {
 		world.putBoolean("Flat", snapshot.flat());
 		world.putLong("Time", snapshot.time());
 		world.putLong("TimeOfDay", snapshot.timeOfDay());
+		//? if >=26.1 {
+		/*CompoundTag clocks = new CompoundTag();
+		snapshot.clocks().forEach((id, ticks) -> clocks.putLong(id.toString(), ticks));
+		world.put("Clocks", clocks);
+		*///?}
 		world.putFloat("Rain", snapshot.rainGradient());
 		world.putFloat("Thunder", snapshot.thunderGradient());
 		world.putInt("CenterChunkX", snapshot.centerChunkX());

@@ -27,8 +27,14 @@ public abstract class CameraMixin {
 	@Shadow
 	protected abstract void setPosition(Vec3 pos);
 
+	//? if >=26.1 {
+	/*// 26.1+: the camera is put on the entity here, before the view frustum is worked out from it.
+	@Inject(method = "alignWithEntity", at = @At("TAIL"))
+	private void deathreplay$applyOverride(float tickProgress, CallbackInfo ci) {
+	*///?} else {
 	@Inject(method = "setup", at = @At("TAIL"))
 	private void deathreplay$applyOverride(Level area, Entity focusedEntity, boolean thirdPerson, boolean inverseView, float tickProgress, CallbackInfo ci) {
+	//?}
 		DetachedCamera override = CameraOverride.frame(tickProgress);
 		if (override != null) {
 			this.setRotation(override.getYaw(), override.getPitch());

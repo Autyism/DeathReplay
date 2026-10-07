@@ -296,6 +296,9 @@ public final class Recorder {
 
 			EntitySample sample = frame.find(playerId);
 			if (sample != null) {
+				//? if >=26.1 {
+				/*ChunkPos pos = ChunkPos.containing(BlockPos.containing(sample.x, sample.y, sample.z));
+				*///?} else
 				ChunkPos pos = new ChunkPos(BlockPos.containing(sample.x, sample.y, sample.z));
 				if (route.isEmpty() || !route.getLast().equals(pos)) {
 					route.add(pos);
@@ -319,10 +322,17 @@ public final class Recorder {
 			return;
 		}
 
+		//? if >=26.1 {
+		/*LevelChunk chunk = unloadingWorld.getChunkSource().getChunk(pos.x(), pos.z(), false);
+		if (chunk != null) {
+			UNLOADED_CHUNKS.put(pos.pack(), new UnloadedChunk(new ClientboundLevelChunkWithLightPacket(chunk, unloadingWorld.getLightEngine(), null, null), tickCounter));
+		}
+		*///?} else {
 		LevelChunk chunk = unloadingWorld.getChunkSource().getChunk(pos.x, pos.z, false);
 		if (chunk != null) {
 			UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ClientboundLevelChunkWithLightPacket(chunk, unloadingWorld.getLightEngine(), null, null), tickCounter));
 		}
+		//?}
 	}
 
 	/**
@@ -341,9 +351,15 @@ public final class Recorder {
 		List<LevelChunk> nearRoute = new ArrayList<>();
 		LongSet seen = new LongOpenHashSet();
 		for (ChunkPos onRoute : route(BUFFER, player.getId())) {
+			//? if >=26.1 {
+			/*for (int x = onRoute.x() - WorldSnapshot.PATH_RADIUS; x <= onRoute.x() + WorldSnapshot.PATH_RADIUS; x++) {
+				for (int z = onRoute.z() - WorldSnapshot.PATH_RADIUS; z <= onRoute.z() + WorldSnapshot.PATH_RADIUS; z++) {
+					if (seen.add(ChunkPos.pack(x, z))) {
+			*///?} else {
 			for (int x = onRoute.x - WorldSnapshot.PATH_RADIUS; x <= onRoute.x + WorldSnapshot.PATH_RADIUS; x++) {
 				for (int z = onRoute.z - WorldSnapshot.PATH_RADIUS; z <= onRoute.z + WorldSnapshot.PATH_RADIUS; z++) {
 					if (seen.add(ChunkPos.asLong(x, z))) {
+			//?}
 						LevelChunk chunk = movingWorld.getChunkSource().getChunk(x, z, false);
 						if (chunk != null) {
 							nearRoute.add(chunk);
@@ -360,9 +376,15 @@ public final class Recorder {
 	public static void afterChunkCenterChange(ClientLevel movedWorld, List<LevelChunk> nearRoute) {
 		for (LevelChunk chunk : nearRoute) {
 			ChunkPos pos = chunk.getPos();
+			//? if >=26.1 {
+			/*if (movedWorld.getChunkSource().getChunk(pos.x(), pos.z(), false) != chunk) {
+				UNLOADED_CHUNKS.put(pos.pack(), new UnloadedChunk(new ClientboundLevelChunkWithLightPacket(chunk, movedWorld.getLightEngine(), null, null), tickCounter));
+			}
+			*///?} else {
 			if (movedWorld.getChunkSource().getChunk(pos.x, pos.z, false) != chunk) {
 				UNLOADED_CHUNKS.put(pos.toLong(), new UnloadedChunk(new ClientboundLevelChunkWithLightPacket(chunk, movedWorld.getLightEngine(), null, null), tickCounter));
 			}
+			//?}
 		}
 	}
 

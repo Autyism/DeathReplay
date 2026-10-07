@@ -34,6 +34,10 @@ public class DeathReplayMixinPlugin implements IMixinConfigPlugin {
 
 	@Override
 	public List<String> getMixins() {
+		//? if >=26.1 {
+		/*// Only exists from 26.1 on, so it is not in the mixin config that all versions share.
+		return List.of("ClientLevelMixin");
+		*///?} else
 		return null;
 	}
 

@@ -15,6 +15,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  */
 @Mixin(Gui.class)
 public abstract class InGameHudMixin {
+	//? if >=26.1 {
+	/*@Inject(method = "extractRenderState", at = @At("HEAD"), cancellable = true)
+	*///?} else
 	@Inject(method = "render", at = @At("HEAD"), cancellable = true)
 	private void deathreplay$hideDuringFullView(GuiGraphics context, DeltaTracker tickCounter, CallbackInfo ci) {
 		if (CameraOverride.hidesHud()) {

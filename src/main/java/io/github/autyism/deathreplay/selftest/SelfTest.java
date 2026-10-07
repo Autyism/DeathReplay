@@ -827,6 +827,11 @@ public final class SelfTest {
 
 		// ---- watching the replay after respawning, alive, standing somewhere else
 		Vec3[] playerPos = new Vec3[1];
+		//? if >=26.1 {
+		/*// 26.1+: the stage has clocks of its own. Night in the real world; the replay must keep the time of the death.
+		run("night in the real world", c -> command(c, "time set midnight"));
+		waitTicks("night falls", 10);
+		*///?}
 		startPacketAudit("the replay after respawning");
 		run("open the replay after respawning", c -> {
 			c.gui.getChat().clearMessages(false);
@@ -846,6 +851,13 @@ public final class SelfTest {
 			double camToDeath = c.gameRenderer.getMainCamera().position().distanceTo(Recorder.getLast().playerAt(Replay.getTick()).pos());
 			LOGGER.info("[SelfTest] replay camera is {} blocks from the recorded player", String.format("%.2f", camToDeath));
 			check("the camera is at the recorded scene", camToDeath < 12.0);
+			//? if >=26.1 {
+			/*long recordedTime = Recorder.getLast().snapshot().timeOfDay();
+			long stageTime = Replay.getStage().getDefaultClockTime();
+			long realTime = c.level.getDefaultClockTime() % 24000L;
+			LOGGER.info("[SelfTest] time of day: recorded {}, on the stage {}, in the real world {}", recordedTime, stageTime, realTime);
+			check("the replay keeps the time of the death while the real world is at night", stageTime == recordedTime && Math.abs(realTime - 18000L) < 400L);
+			*///?}
 		});
 		screenshot("replay_after_respawn");
 		waitUntil("replay after respawn reaches the end", () -> Replay.isAtEnd() && !Replay.isPlaying(), 200);
@@ -867,6 +879,11 @@ public final class SelfTest {
 			check("the recording can be watched again", Replay.isAvailable(c));
 		});
 		endPacketAudit("the replay after respawning", true);
+		//? if >=26.1 {
+		/*run("noon again in the real world", c -> command(c, "time set noon"));
+		waitTicks("noon", 5);
+		run("clear the time message", c -> c.gui.getChat().clearMessages(false));
+		*///?}
 		waitTicks("real world on screen again", 20);
 		screenshot("back_in_game_after_replay");
 		run("remove the test block", c -> command(c, "setblock 3 -60 8 minecraft:air"));
@@ -1236,6 +1253,15 @@ public final class SelfTest {
 			client.createWorldOpenFlows().openWorld(WORLD_NAME, () -> LOGGER.error("[SelfTest] FAIL world load was cancelled"));
 		} else {
 			LOGGER.info("[SelfTest] creating flat creative world '{}'", WORLD_NAME);
+			//? if >=26.1 {
+			/*LevelSettings levelInfo = new LevelSettings(
+				WORLD_NAME,
+				GameType.CREATIVE,
+				new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false),
+				true,
+				WorldDataConfiguration.DEFAULT
+			);
+			*///?} else {
 			LevelSettings levelInfo = new LevelSettings(
 				WORLD_NAME,
 				GameType.CREATIVE,
@@ -1245,6 +1271,7 @@ public final class SelfTest {
 				new GameRules(WorldDataConfiguration.DEFAULT.enabledFeatures()),
 				WorldDataConfiguration.DEFAULT
 			);
+			//?}
 			Screen parent = client.screen;
 			client.createWorldOpenFlows()
 				.createFreshLevel(WORLD_NAME, levelInfo, WorldOptions.testWorldWithRandomSeed(), WorldPresets::createFlatWorldDimensions, parent);

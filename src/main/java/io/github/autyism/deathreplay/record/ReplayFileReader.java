@@ -162,6 +162,8 @@ public final class ReplayFileReader {
 			world.getBooleanOr("Flat", false),
 			world.getLongOr("Time", 0L),
 			world.getLongOr("TimeOfDay", 6000L),
+			//? if >=26.1
+			/*readClocks(world.getCompoundOrEmpty("Clocks")),*/
 			world.getFloatOr("Rain", 0.0F),
 			world.getFloatOr("Thunder", 0.0F),
 			world.getIntOr("CenterChunkX", 0),
@@ -170,6 +172,17 @@ public final class ReplayFileReader {
 			List.copyOf(chunks)
 		);
 	}
+
+	//? if >=26.1 {
+	/*private static java.util.Map<Identifier, Long> readClocks(CompoundTag clocks) {
+		java.util.Map<Identifier, Long> read = new java.util.HashMap<>();
+		for (String id : clocks.keySet()) {
+			read.put(Identifier.parse(id), clocks.getLongOr(id, 0L));
+		}
+
+		return read;
+	}
+	*///?}
 
 	private static void readTrack(CompoundTag track, RegistryAccess registries, List<List<EntitySample>> samples) throws IOException {
 		int entityId = track.getIntOr("EntityId", 0);

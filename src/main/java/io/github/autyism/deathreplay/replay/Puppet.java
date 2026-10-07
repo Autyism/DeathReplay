@@ -93,6 +93,9 @@ final class Puppet {
 			}
 
 			entity.setId(puppetId);
+			//? if >=26.1 {
+			/*entity.setUUID(Mth.createInsecureUUID(world.getRandom()));
+			*///?} else
 			entity.setUUID(Mth.createInsecureUUID());
 			entity.snapTo(sample.x, sample.y, sample.z, sample.yaw, sample.pitch);
 			entity.setYHeadRot(sample.headYaw);

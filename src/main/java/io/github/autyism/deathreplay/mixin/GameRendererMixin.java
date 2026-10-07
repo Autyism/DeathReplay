@@ -21,6 +21,9 @@ public abstract class GameRendererMixin {
 	 * player's own eyes, not to a detached camera.
 	 */
 	@Inject(method = "bobHurt", at = @At("HEAD"), cancellable = true)
+	//? if >=26.1 {
+	/*private void deathreplay$noTiltWhileDetached(net.minecraft.client.renderer.state.level.CameraRenderState cameraState, PoseStack matrices, CallbackInfo ci) {
+	*///?} else
 	private void deathreplay$noTiltWhileDetached(PoseStack matrices, float tickProgress, CallbackInfo ci) {
 		if (CameraOverride.isActive()) {
 			ci.cancel();
@@ -39,8 +42,12 @@ public abstract class GameRendererMixin {
 	 * While a replay plays, the camera (water / lava fog, sky light colour) and the fog must be
 	 * computed from the replay's stage, not from the place the real player is standing in.
 	 * Only what this renderer reads is swapped; the game's world field stays as it is.
+	 * (26.1+: the camera takes its level from GameRenderer.setLevel; the fog is set up in extractCamera.)
 	 */
 	@ModifyExpressionValue(
+		//? if >=26.1 {
+		/*method = "extractCamera",
+		*///?} else
 		method = {"updateCamera", "renderLevel"},
 		at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;level:Lnet/minecraft/client/multiplayer/ClientLevel;")
 	)
