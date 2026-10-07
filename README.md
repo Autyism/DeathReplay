@@ -5,7 +5,7 @@
 
 <p align="center"><a href="#english">English</a> · <a href="#简体中文">简体中文</a></p>
 
-![Minecraft 1.21.11 | 26.1–26.2](https://img.shields.io/badge/Minecraft-1.21.11_%7C_26.1--26.2-62B47A) ![Fabric](https://img.shields.io/badge/Loader-Fabric-DBD0B4) ![Client-side](https://img.shields.io/badge/Side-Client-5B8DEF) ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
+![Minecraft 1.21.11 | 26.1–26.3](https://img.shields.io/badge/Minecraft-1.21.11_%7C_26.1--26.3-62B47A) ![Fabric](https://img.shields.io/badge/Loader-Fabric-DBD0B4) ![Client-side](https://img.shields.io/badge/Side-Client-5B8DEF) ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
 # English
 
@@ -200,7 +200,7 @@ The settings screen also has **Saved Replays...** and **Markers...** buttons. Ho
 
 | | |
 |---|---|
-| Minecraft | Java Edition 1.21.11 or 26.1–26.2 (each has its own jar; 26.x needs Java 25) |
+| Minecraft | Java Edition 1.21.11 or 26.1–26.3 (each has its own jar; 26.x needs Java 25) |
 | Mod loader | Fabric Loader 0.19.5 or newer |
 | Fabric API | Required |
 | Java | 21 or newer |
@@ -491,7 +491,7 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 
 | | |
 |---|---|
-| Minecraft | Java 版 1.21.11 或 26.1–26.2（每个版本有单独的 jar；26.x 需要 Java 25） |
+| Minecraft | Java 版 1.21.11 或 26.1–26.3（每个版本有单独的 jar；26.x 需要 Java 25） |
 | 模组加载器 | Fabric Loader 0.19.5 或更高 |
 | Fabric API | 必需（前置） |
 | Java | 21 或更高 |
