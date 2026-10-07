@@ -47,8 +47,11 @@ public abstract class GameRendererMixin {
 	@ModifyExpressionValue(
 		//? if >=26.1 {
 		/*method = "extractCamera",
-		*///?} else
+		*///?} elif >=1.21.11 {
 		method = {"updateCamera", "renderLevel"},
+		//?} else {
+		/*method = "renderLevel",
+		*///?}
 		at = @At(value = "FIELD", target = "Lnet/minecraft/client/Minecraft;level:Lnet/minecraft/client/multiplayer/ClientLevel;")
 	)
 	private ClientLevel deathreplay$renderTheStage(ClientLevel original) {

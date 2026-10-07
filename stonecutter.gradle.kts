@@ -23,6 +23,17 @@ stonecutter parameters {
         }
     }
 
+    // Before 1.21.11: some classes and getters had other names, and a cycle button got its first value separately.
+    // ".identifier()" is only ever called on a ResourceKey in this code.
+    oneWay(current.parsed < "1.21.11",
+        "\\bimport net\\.minecraft\\.util\\.Util;" to "import net.minecraft.Util;",
+        "\\bnet\\.minecraft\\.world\\.level\\.gamerules\\.GameRules\\b" to "net.minecraft.world.level.GameRules",
+        "\\.identifier\\(\\)" to ".location()",
+        "\\bCycleButton\\.builder\\(([\\w:]+), ([\\w.]+)\\)" to "CycleButton.builder($1).withInitialValue($2)",
+        "\\bcamera\\.forwardVector\\(\\)" to "camera.getLookVector()",
+        // self-test only: game rules had camel-case names
+        "\\bimmediate_respawn\\b" to "doImmediateRespawn",
+    )
     // 26.1: GUI drawing became an "extract" pass (same arguments). In this code these calls only ever
     // go to GuiGraphics, and only screens override render / renderBackground.
     oneWay(current.parsed >= "26.1",
