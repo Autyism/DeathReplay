@@ -4,6 +4,11 @@ import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.phys.Vec3;
+//? if >=26.3 {
+/*import io.github.autyism.deathreplay.mixin.LivingEntitySwingAccessor;
+import io.github.autyism.deathreplay.mixin.SwingStateAccessor;
+import net.minecraft.world.item.component.SwingAnimation;
+*///?}
 
 /**
  * Where one entity was, and how it was posed, at the end of one client tick.
@@ -32,6 +37,10 @@ public final class EntitySample {
 	public final boolean handSwinging;
 	public final int handSwingTicks;
 	public final boolean offHandSwing;
+	//? if >=26.3 {
+	/*/^* 26.3+: how the current swing moves the arm (whack, stab...); null when not swinging. ^/
+	public final SwingAnimation swingAnimation;
+	*///?}
 	public final EntityAppearance appearance;
 
 	EntitySample(Entity entity, EntityAppearance appearance) {
@@ -56,9 +65,19 @@ public final class EntitySample {
 			this.bodyYaw = living.yBodyRot;
 			this.hurtTime = living.hurtTime;
 			this.deathTime = living.deathTime;
+			//? if >=26.3 {
+			/*// The swing has its own state now; its tick count is one more than the old swing time.
+			LivingEntity.SwingDescription swing = living.getCurrentSwing();
+			int swingTicks = ((SwingStateAccessor) ((LivingEntitySwingAccessor) living).deathreplay$getSwingState()).deathreplay$getTicks();
+			this.handSwinging = swing != null;
+			this.handSwingTicks = swing != null ? swingTicks - 1 : 0;
+			this.offHandSwing = swing != null && swing.hand() == InteractionHand.OFF_HAND;
+			this.swingAnimation = swing != null ? swing.animation() : null;
+			*///?} else {
 			this.handSwinging = living.swinging;
 			this.handSwingTicks = living.swingTime;
 			this.offHandSwing = living.swingingArm == InteractionHand.OFF_HAND;
+			//?}
 		} else {
 			this.headYaw = entity.getYHeadRot();
 			this.bodyYaw = entity.getVisualRotationYInDegrees();
@@ -67,6 +86,8 @@ public final class EntitySample {
 			this.handSwinging = false;
 			this.handSwingTicks = 0;
 			this.offHandSwing = false;
+			//? if >=26.3
+			/*this.swingAnimation = null;*/
 		}
 	}
 
@@ -74,7 +95,10 @@ public final class EntitySample {
 	EntitySample(
 		int entityId, double x, double y, double z, float yaw, float pitch, float headYaw, float bodyYaw,
 		float velocityX, float velocityY, float velocityZ, int vehicleId, boolean onGround, float eyeHeight,
-		int hurtTime, int deathTime, boolean handSwinging, int handSwingTicks, boolean offHandSwing, EntityAppearance appearance
+		int hurtTime, int deathTime, boolean handSwinging, int handSwingTicks, boolean offHandSwing,
+		//? if >=26.3
+		/*SwingAnimation swingAnimation,*/
+		EntityAppearance appearance
 	) {
 		this.entityId = entityId;
 		this.x = x;
@@ -95,6 +119,8 @@ public final class EntitySample {
 		this.handSwinging = handSwinging;
 		this.handSwingTicks = handSwingTicks;
 		this.offHandSwing = offHandSwing;
+		//? if >=26.3
+		/*this.swingAnimation = swingAnimation;*/
 		this.appearance = appearance;
 	}
 

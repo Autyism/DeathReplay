@@ -5,6 +5,11 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Options;
+//? if >=26.3 {
+/*import java.nio.FloatBuffer;
+import org.lwjgl.sdl.SDLMouse;
+import org.lwjgl.system.MemoryStack;
+*///?} else
 import org.lwjgl.glfw.GLFW;
 
 /**
@@ -13,6 +18,7 @@ import org.lwjgl.glfw.GLFW;
  * <p>While a screen is open vanilla releases all key bindings, so {@link KeyMapping#isDown()}
  * is useless there; this asks GLFW for the physical state of whatever the player has bound.
  * Purely local input: nothing here is sent to the server.
+ * (26.3+: the window is SDL, not GLFW; the same is asked of SDL.)
  */
 public final class CameraInput {
 	/**
@@ -41,6 +47,13 @@ public final class CameraInput {
 	/** Hides the cursor and lets it travel without limits, for mouse-look inside a screen. */
 	public void grabMouse(Minecraft client) {
 		if (!this.grabbed && client.isWindowActive() && !ignoreRealInput) {
+			//? if >=26.3 {
+			/*// SDL's relative mode. The cursor goes back where it was on release, as it did with GLFW.
+			this.lastMouseX = client.mouseHandler.xpos();
+			this.lastMouseY = client.mouseHandler.ypos();
+			SDLMouse.SDL_SetWindowRelativeMouseMode(client.getWindow().handle(), true);
+			relativeMotion();
+			*///?} else
 			GLFW.glfwSetInputMode(client.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_DISABLED);
 			this.grabbed = true;
 			this.hasLastMouse = false;
@@ -49,6 +62,10 @@ public final class CameraInput {
 
 	public void releaseMouse(Minecraft client) {
 		if (this.grabbed) {
+			//? if >=26.3 {
+			/*SDLMouse.SDL_SetWindowRelativeMouseMode(client.getWindow().handle(), false);
+			SDLMouse.SDL_WarpMouseInWindow(client.getWindow().handle(), (float) this.lastMouseX, (float) this.lastMouseY);
+			*///?} else
 			GLFW.glfwSetInputMode(client.getWindow().handle(), GLFW.GLFW_CURSOR, GLFW.GLFW_CURSOR_NORMAL);
 			this.grabbed = false;
 		}
@@ -82,6 +99,16 @@ public final class CameraInput {
 			return;
 		}
 
+		//? if >=26.3 {
+		/*// In relative mode the cursor stops at the window's edge; SDL counts the motion itself.
+		double[] motion = relativeMotion();
+		double sensitivity = options.sensitivity().get() * 0.6 + 0.2;
+		double scale = sensitivity * sensitivity * sensitivity * 8.0 * 0.15;
+		double dx = motion[0] * scale;
+		double dy = motion[1] * scale;
+		state.yawDelta = (float) (options.invertMouseX().get() ? -dx : dx);
+		state.pitchDelta = (float) (options.invertMouseY().get() ? -dy : dy);
+		*///?} else {
 		double x = client.mouseHandler.xpos();
 		double y = client.mouseHandler.ypos();
 		if (this.hasLastMouse) {
@@ -96,8 +123,29 @@ public final class CameraInput {
 
 		this.lastMouseX = x;
 		this.lastMouseY = y;
+		//?}
 		this.hasLastMouse = true;
 	}
+
+	//? if >=26.3 {
+	/*/^* Mouse motion since the last call. ^/
+	private static double[] relativeMotion() {
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			FloatBuffer x = stack.mallocFloat(1);
+			FloatBuffer y = stack.mallocFloat(1);
+			SDLMouse.SDL_GetRelativeMouseState(x, y);
+			return new double[] {x.get(0), y.get(0)};
+		}
+	}
+
+	/^* Whether a mouse button (numbered from 1, as SDL does) is held. ^/
+	private static boolean isMouseButtonDown(int button) {
+		try (MemoryStack stack = MemoryStack.stackPush()) {
+			int buttons = SDLMouse.SDL_GetMouseState(stack.mallocFloat(1), stack.mallocFloat(1));
+			return button > 0 && button <= 32 && (buttons & 1 << button - 1) != 0;
+		}
+	}
+	*///?}
 
 	private static double axis(Minecraft client, KeyMapping positive, KeyMapping negative) {
 		return (isHeld(client, positive) ? 1.0 : 0.0) - (isHeld(client, negative) ? 1.0 : 0.0);
@@ -109,11 +157,20 @@ public final class CameraInput {
 		}
 
 		InputConstants.Key key = KeyBindingHelper.getBoundKeyOf(binding);
+		//? if >=26.3 {
+		/*// Keyboard keys are SDL scancodes.
+		return switch (key.getType()) {
+			case KEYBOARD -> key.getValue() != InputConstants.UNKNOWN.getValue() && InputConstants.isKeyDown(key.getValue());
+			case MOUSE -> isMouseButtonDown(key.getValue());
+			default -> false;
+		};
+		*///?} else {
 		long window = client.getWindow().handle();
 		return switch (key.getType()) {
 			case KEYSYM -> key.getValue() != InputConstants.UNKNOWN.getValue() && GLFW.glfwGetKey(window, key.getValue()) == GLFW.GLFW_PRESS;
 			case MOUSE -> GLFW.glfwGetMouseButton(window, key.getValue()) == GLFW.GLFW_PRESS;
 			default -> false;
 		};
+		//?}
 	}
 }

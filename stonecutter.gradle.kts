@@ -68,4 +68,16 @@ stonecutter parameters {
         "\\.gui\\.getChat\\(\\)" to ".gui.hud.getChat()",
         "\\bEntityType\\.(PLAYER|ARMOR_STAND|ZOMBIE)\\b" to "net.minecraft.world.entity.EntityTypes.$1",
     )
+    // 26.3: input goes through SDL. Keyboard keys are SDL scancodes, mouse buttons are numbered from 1, and
+    // there is no GLFW. InputConstants names the same physical keys on every version, so saved keys still match.
+    oneWay(current.parsed >= "26.3",
+        "\\bGLFW\\.GLFW_KEY_ENTER\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_RETURN",
+        "\\bGLFW\\.GLFW_KEY_KP_ENTER\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_NUMPADENTER",
+        "\\bGLFW\\.GLFW_KEY_(ESCAPE|LEFT|RIGHT|R|F6)\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_$1",
+        "\\bGLFW\\.GLFW_MOUSE_BUTTON_(LEFT|RIGHT)\\b" to "com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_$1",
+        // opening a folder moved too
+        "\\bUtil\\.getPlatform\\(\\)\\.openPath\\(" to "com.mojang.blaze3d.Blaze3D.openPath(",
+        // a world clock's time is read from its instance
+        "\\.clockManager\\(\\)\\.getTotalTicks\\(([^()]*)\\)" to ".clockManager().getInstance($1).totalTicks()",
+    )
 }

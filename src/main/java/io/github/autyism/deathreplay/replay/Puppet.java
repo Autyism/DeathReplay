@@ -46,11 +46,20 @@ final class Puppet {
 		this.entity = entity;
 		this.initialData = initialData;
 		InterpolationHandler interpolator = entity.getInterpolation();
+		//? if >=26.3 {
+		/*// 26.3: an entity that does not glide has a do-nothing handler instead of none.
+		this.interpolated = interpolator != InterpolationHandler.NO_OP;
+		if (interpolator instanceof io.github.autyism.deathreplay.mixin.InterpolationStepsAccessor steps) {
+			// Samples arrive every tick, so there is nothing to smooth over several ticks.
+			steps.deathreplay$setInterpolationSteps(1);
+		}
+		*///?} else {
 		this.interpolated = interpolator != null;
 		if (interpolator != null) {
 			// Samples arrive every tick, so there is nothing to smooth over several ticks.
 			interpolator.setInterpolationLength(1);
 		}
+		//?}
 	}
 
 	/**
@@ -153,6 +162,10 @@ final class Puppet {
 
 		// A sample taken right after an arm swing started shows the swing at tick 0 (or -1).
 		if (entity instanceof LivingEntity living && sample.handSwinging && sample.handSwingTicks <= 0) {
+			//? if >=26.3 {
+			/*living.swing(sample.offHandSwing ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND,
+				sample.swingAnimation != null ? sample.swingAnimation : net.minecraft.world.item.component.SwingAnimation.DEFAULT, false);
+			*///?} else
 			living.swing(sample.offHandSwing ? InteractionHand.OFF_HAND : InteractionHand.MAIN_HAND);
 		}
 

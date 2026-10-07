@@ -71,6 +71,7 @@ import net.minecraft.world.level.gamerules.GameRules;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.phys.Vec3;
+//? if <26.3
 import org.lwjgl.glfw.GLFW;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -429,6 +430,23 @@ public final class SelfTest {
 				check("the hits on the player were recorded", hitsOnPlayer >= 2);
 			}
 
+			//? if >=26.3 {
+			/*// 26.3 keeps arm swings in a swing state of its own; the zombie's swings must still be recorded.
+			int zombieSwings = 0;
+			for (Frame frame : recording.frames()) {
+				for (EntitySample sample : frame.entities()) {
+					if (sample.appearance.type() == EntityType.ZOMBIE && sample.handSwinging && sample.handSwingTicks <= 0 && sample.swingAnimation != null) {
+						zombieSwings++;
+					}
+				}
+			}
+
+			LOGGER.info("[SelfTest] zombie arm swings recorded: {}", zombieSwings);
+			if (killedByZombie[0]) {
+				check("the zombie's arm swings were recorded", zombieSwings >= 1);
+			}
+			*///?}
+
 			c.gui.getChat().clearMessages(false);
 			check("combat replay opened", Replay.open(c));
 			Replay.seek(Math.max(0, recording.deathFrame() - 14));
@@ -644,6 +662,8 @@ public final class SelfTest {
 						&& other.handSwingTicks == sample.handSwingTicks && other.deathTime == sample.deathTime
 						&& other.appearance.type() == sample.appearance.type()
 						&& other.appearance.trackedData().size() == sample.appearance.trackedData().size()
+						//? if >=26.3
+						/*&& java.util.Objects.equals(other.swingAnimation, sample.swingAnimation)*/
 						&& (other.appearance.equipment() == null) == (sample.appearance.equipment() == null);
 				}
 			}

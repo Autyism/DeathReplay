@@ -660,6 +660,49 @@ public final class Replay {
 	}
 
 	/** Same as the vanilla particle packet handler. */
+	//? if >=26.3 {
+	/*private static void playParticles(ClientboundLevelParticlesPacket packet) {
+		// 26.3: speed per axis, and a second way of spreading the particles.
+		if (packet.count() == 0) {
+			world.addParticle(packet.particle(), packet.overrideLimiter(), packet.alwaysShow(), packet.x(), packet.y(), packet.z(),
+				packet.xMaxSpeed() * packet.xDist(), packet.yMaxSpeed() * packet.yDist(), packet.zMaxSpeed() * packet.zDist());
+			return;
+		}
+
+		ClientboundLevelParticlesPacket.RandomizationType randomization = packet.randomizationType();
+		for (int i = 0; i < packet.count(); i++) {
+			double x;
+			double y;
+			double z;
+			double velocityX;
+			double velocityY;
+			double velocityZ;
+			if (randomization.isAlternative()) {
+				x = world.getRandom().nextDouble() * packet.xDist();
+				y = world.getRandom().nextDouble() * packet.yDist();
+				z = world.getRandom().nextDouble() * packet.zDist();
+				velocityX = packet.xMaxSpeed();
+				velocityY = packet.yMaxSpeed();
+				velocityZ = packet.zMaxSpeed();
+				if (randomization == ClientboundLevelParticlesPacket.RandomizationType.ALTERNATIVE_WITH_SPEED) {
+					velocityX *= world.getRandom().nextDouble();
+					velocityY *= world.getRandom().nextDouble();
+					velocityZ *= world.getRandom().nextDouble();
+				}
+			} else {
+				x = world.getRandom().nextGaussian() * packet.xDist();
+				y = world.getRandom().nextGaussian() * packet.yDist();
+				z = world.getRandom().nextGaussian() * packet.zDist();
+				velocityX = world.getRandom().nextGaussian() * packet.xMaxSpeed();
+				velocityY = world.getRandom().nextGaussian() * packet.yMaxSpeed();
+				velocityZ = world.getRandom().nextGaussian() * packet.zMaxSpeed();
+			}
+
+			world.addParticle(packet.particle(), packet.overrideLimiter(), packet.alwaysShow(),
+				packet.x() + x, packet.y() + y, packet.z() + z, velocityX, velocityY, velocityZ);
+		}
+	}
+	*///?} else {
 	private static void playParticles(ClientboundLevelParticlesPacket packet) {
 		if (packet.getCount() == 0) {
 			world.addParticle(packet.getParticle(), packet.isOverrideLimiter(), packet.alwaysShow(), packet.getX(), packet.getY(), packet.getZ(),
@@ -678,6 +721,7 @@ public final class Replay {
 				packet.getX() + x, packet.getY() + y, packet.getZ() + z, velocityX, velocityY, velocityZ);
 		}
 	}
+	//?}
 
 	// ---------------------------------------------------------------- per-frame camera
 

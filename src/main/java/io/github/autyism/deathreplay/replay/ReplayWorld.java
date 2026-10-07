@@ -86,6 +86,16 @@ final class ReplayWorld {
 		try {
 			LevelLightEngine light = world.getChunkSource().getLightEngine();
 			for (ClientboundLevelChunkWithLightPacket packet : snapshot.chunks()) {
+				//? if >=26.3 {
+				/*int x = packet.x();
+				int z = packet.z();
+				LevelChunk chunk = world.getChunkSource().replaceWithPacketData(x, z, packet.chunkData());
+				if (chunk == null) {
+					continue;
+				}
+
+				access.deathreplay$readLightData(x, z, packet.lightData(), false);
+				*///?} else {
 				int x = packet.getX();
 				int z = packet.getZ();
 				ClientboundLevelChunkPacketData data = packet.getChunkData();
@@ -95,6 +105,7 @@ final class ReplayWorld {
 				}
 
 				access.deathreplay$readLightData(x, z, packet.getLightData(), false);
+				//?}
 				LevelChunkSection[] sections = chunk.getSections();
 				for (int i = 0; i < sections.length; i++) {
 					light.updateSectionStatus(SectionPos.of(chunk.getPos(), world.getSectionYFromSectionIndex(i)), sections[i].hasOnlyAir());

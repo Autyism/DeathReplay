@@ -68,6 +68,7 @@ import org.jetbrains.annotations.Nullable;
  *              Eye   int[n]           eye height as raw float bits
  *              State int[n]           hurtTime | deathTime&lt;&lt;8 | swingTicks&lt;&lt;16 | flags&lt;&lt;24
  *                                     (flags: 1 on ground, 2 hand swinging, 4 off hand)
+ *              Swing int[n]           (Minecraft 26.3 and later) swing animation type &lt;&lt; 16 | duration, or -1
  *              Looks [ { Tick, Tracked byte[], Spawn byte[]?, Equipment [ { Slot, Item } ] } ] } ]
  * BlockChanges [ { Tick, X, Y, Z, Old, New } ]
  * Events [ { Tick, Type, Packet byte[] | EntityId + Status | EntityId + Animation } ]
@@ -320,6 +321,8 @@ public final class ReplayFileWriter {
 		private final IntArrayList vehicle = new IntArrayList();
 		private final IntArrayList eye = new IntArrayList();
 		private final IntArrayList state = new IntArrayList();
+		//? if >=26.3
+		/*private final IntArrayList swing = new IntArrayList();*/
 		private final ListTag looks = new ListTag();
 		@Nullable
 		private EntitySample first;
@@ -346,6 +349,8 @@ public final class ReplayFileWriter {
 			this.eye.add(Float.floatToRawIntBits(sample.eyeHeight));
 			int flags = (sample.onGround ? FLAG_ON_GROUND : 0) | (sample.handSwinging ? FLAG_HAND_SWINGING : 0) | (sample.offHandSwing ? FLAG_OFF_HAND : 0);
 			this.state.add(sample.hurtTime & 0xFF | (sample.deathTime & 0xFF) << 8 | (sample.handSwingTicks & 0xFF) << 16 | flags << 24);
+			//? if >=26.3
+			/*this.swing.add(sample.swingAnimation == null ? -1 : sample.swingAnimation.type().ordinal() << 16 | sample.swingAnimation.duration() & 0xFFFF);*/
 
 			if (sample.appearance != this.lastLook) {
 				this.lastLook = sample.appearance;
@@ -371,6 +376,8 @@ public final class ReplayFileWriter {
 			nbt.putIntArray("Eye", this.eye.toIntArray());
 			nbt.putBoolean("Local", look.localPlayer());
 			nbt.putIntArray("State", this.state.toIntArray());
+			//? if >=26.3
+			/*nbt.putIntArray("Swing", this.swing.toIntArray());*/
 			nbt.put("Looks", this.looks);
 			return nbt;
 		}

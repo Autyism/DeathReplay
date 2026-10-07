@@ -199,6 +199,8 @@ public final class ReplayFileReader {
 		int[] vehicle = track.getIntArray("Vehicle").orElse(new int[0]);
 		int[] state = track.getIntArray("State").orElse(new int[0]);
 		int[] eye = track.getIntArray("Eye").orElse(new int[0]);
+		//? if >=26.3
+		/*int[] swing = track.getIntArray("Swing").orElse(new int[0]);*/
 		int count = ticks.length;
 		if (pos.length != count * 3 || rot.length != count * 4 || vel.length != count * 3 || vehicle.length != count || state.length != count || eye.length != count) {
 			throw new IOException("entity track " + entityId + " has inconsistent array lengths");
@@ -234,11 +236,25 @@ public final class ReplayFileReader {
 				(flags & ReplayFileWriter.FLAG_HAND_SWINGING) != 0,
 				(byte) (packed >> 16 & 0xFF),
 				(flags & ReplayFileWriter.FLAG_OFF_HAND) != 0,
+				//? if >=26.3
+				/*swingAnimation(swing, i),*/
 				appearance
 			));
 		}
 	}
 
+	//? if >=26.3 {
+	/*@Nullable
+	private static net.minecraft.world.item.component.SwingAnimation swingAnimation(int[] swing, int index) {
+		net.minecraft.world.item.SwingAnimationType[] types = net.minecraft.world.item.SwingAnimationType.values();
+		if (index >= swing.length || swing[index] < 0 || swing[index] >>> 16 >= types.length) {
+			return null;
+		}
+
+		return new net.minecraft.world.item.component.SwingAnimation(types[swing[index] >>> 16], swing[index] & 0xFFFF);
+	}
+
+	*///?}
 	private static EntityAppearance readLook(CompoundTag look, EntityType<?> type, UUID uuid, @Nullable GameProfile profile, boolean local, RegistryAccess registries) {
 		List<SynchedEntityData.DataValue<?>> tracked = look.getByteArray("Tracked")
 			.map(bytes -> decode(ClientboundSetEntityDataPacket.STREAM_CODEC, bytes, registries).packedItems())

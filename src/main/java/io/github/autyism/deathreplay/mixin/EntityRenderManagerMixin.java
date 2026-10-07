@@ -16,6 +16,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 @Mixin(EntityRenderDispatcher.class)
 public abstract class EntityRenderManagerMixin {
 	@Inject(method = "shouldRender", at = @At("HEAD"), cancellable = true)
+	//? if >=26.3 {
+	/*private void deathreplay$hideDuringReplay(Entity entity, Frustum frustum, double x, double y, double z, float partialTicks, CallbackInfoReturnable<Boolean> cir) {
+	*///?} else
 	private void deathreplay$hideDuringReplay(Entity entity, Frustum frustum, double x, double y, double z, CallbackInfoReturnable<Boolean> cir) {
 		if (Replay.hidesEntity(entity)) {
 			cir.setReturnValue(false);

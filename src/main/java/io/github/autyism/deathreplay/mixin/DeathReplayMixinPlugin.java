@@ -34,7 +34,10 @@ public class DeathReplayMixinPlugin implements IMixinConfigPlugin {
 
 	@Override
 	public List<String> getMixins() {
-		//? if >=26.1 {
+		//? if >=26.3 {
+		/*// These only exist from 26.1 / 26.3 on, so they are not in the mixin config that all versions share.
+		return List.of("ClientLevelMixin", "LivingEntitySwingAccessor", "SwingStateAccessor", "InterpolationStepsAccessor");
+		*///?} elif >=26.1 {
 		/*// Only exists from 26.1 on, so it is not in the mixin config that all versions share.
 		return List.of("ClientLevelMixin");
 		*///?} else
