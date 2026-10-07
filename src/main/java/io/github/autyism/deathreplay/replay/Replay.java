@@ -620,6 +620,8 @@ public final class Replay {
 				world.playLocalSound(center.x, center.y, center.z, packet.explosionSound().value(), SoundSource.BLOCKS, 4.0F,
 					(1.0F + (world.random.nextFloat() - world.random.nextFloat()) * 0.2F) * 0.7F, false);
 				world.addParticle(packet.explosionParticle(), center.x, center.y, center.z, 1.0, 0.0, 0.0);
+				// The block particles that fly out of an explosion came with 1.21.9.
+				//? if >=1.21.9
 				world.trackExplosionEffects(center, packet.radius(), packet.blockCount(), packet.blockParticles());
 			}
 			case RecordedEvent.EntityStatus e -> {

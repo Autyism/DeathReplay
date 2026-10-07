@@ -41,7 +41,10 @@ public class DeathReplayClient implements ClientModInitializer {
 	@Override
 	public void onInitializeClient() {
 		DeathReplayConfig.get();
+		//? if >=1.21.9 {
 		KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(NAMESPACE, "main"));
+		//?} else
+		/*String category = "key.category." + NAMESPACE + ".main";*/
 		openSettingsKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.open_settings", InputConstants.UNKNOWN.getValue(), category));
 		watchReplayKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.watch_replay", GLFW.GLFW_KEY_F6, category));
 

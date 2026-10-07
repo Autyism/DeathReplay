@@ -1213,7 +1213,10 @@ public final class SelfTest {
 		screenshot("spectate_free");
 
 		run("right click in the free camera to mark the spot", c -> {
+			//? if >=1.21.9 {
 			Screen screen = c.screen;
+			//?} else
+			/*DeathSpectateScreen screen = (DeathSpectateScreen) c.screen;*/
 			int before = Waypoints.current(c).size();
 			check("the right click is taken", screen.mouseClicked(new MouseButtonEvent(screen.width / 2.0, screen.height / 2.0, new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0)), false));
 			List<Waypoints.Marker> markers = Waypoints.current(c);

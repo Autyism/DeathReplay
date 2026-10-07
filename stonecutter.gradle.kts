@@ -34,6 +34,20 @@ stonecutter parameters {
         // self-test only: game rules had camel-case names
         "\\bimmediate_respawn\\b" to "doImmediateRespawn",
     )
+    // Before 1.21.9: screens got key presses and clicks as plain numbers. The two screens that read input
+    // extend a small stand-in that turns them into the newer records (package legacy). The window handle and
+    // a player's profile had getters, there was no "invert mouse X" option, and riding had no event switch.
+    oneWay(current.parsed < "1.21.9",
+        "\\bimport net\\.minecraft\\.client\\.input\\.(KeyEvent|MouseButtonEvent|MouseButtonInfo);" to "import io.github.autyism.deathreplay.legacy.$1;",
+        "\\bclass (DeathSpectateScreen|ReplayScreen) extends Screen\\b" to "class $1 extends io.github.autyism.deathreplay.legacy.LegacyInputScreen",
+        "\\.matches\\(input\\)" to ".matches(input.key(), input.scancode())",
+        "\\.getWindow\\(\\)\\.handle\\(\\)" to ".getWindow().getWindow()",
+        "\\boptions\\.invertMouseX\\(\\)\\.get\\(\\)" to "false",
+        "\\boptions\\.invertMouseY\\(\\)" to "options.invertYMouse()",
+        "\\b(getGameProfile|profile)\\(\\)\\.name\\(\\)" to "$1().getName()",
+        "\\b(getGameProfile|profile)\\(\\)\\.id\\(\\)" to "$1().getId()",
+        "\\.startRiding\\(([\\w.]+), true, false\\)" to ".startRiding($1, true)",
+    )
     // 26.1: GUI drawing became an "extract" pass (same arguments). In this code these calls only ever
     // go to GuiGraphics, and only screens override render / renderBackground.
     oneWay(current.parsed >= "26.1",

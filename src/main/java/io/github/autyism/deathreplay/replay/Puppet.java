@@ -156,7 +156,10 @@ final class Puppet {
 			}
 		} else if (this.interpolated) {
 			// A rider is carried by its vehicle; only where it looks is its own.
+			//? if >=1.21.9 {
 			entity.moveOrInterpolateTo(sample.yaw, sample.pitch);
+			//?} else
+			/*entity.moveOrInterpolateTo(entity.position(), sample.yaw, sample.pitch);*/
 			entity.lerpHeadTo(sample.headYaw, 1);
 		}
 

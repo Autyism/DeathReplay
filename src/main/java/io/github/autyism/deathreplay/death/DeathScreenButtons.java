@@ -43,8 +43,13 @@ public final class DeathScreenButtons {
 		DeathScreenKeeper.remember(deathScreen, client.player);
 		// Vanilla ignores Esc on the death screen. Here it opens the game menu, so options, Mod Menu
 		// and the like can be reached without respawning; closing the menu comes back here.
+		//? if >=1.21.9 {
 		ScreenKeyboardEvents.allowKeyPress(screen).register((pressedOn, input) -> {
 			if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+		//?} else {
+		/*ScreenKeyboardEvents.allowKeyPress(screen).register((pressedOn, key, scancode, modifiers) -> {
+			if (key == GLFW.GLFW_KEY_ESCAPE) {
+		*///?}
 				openGameMenu(client);
 				return false;
 			}
