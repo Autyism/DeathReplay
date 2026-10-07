@@ -36,8 +36,10 @@ import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 import net.minecraft.world.phys.shapes.CollisionContext;
+//? if >=1.21.6 {
 import net.minecraft.world.waypoints.TrackedWaypoint;
 import net.minecraft.world.waypoints.Waypoint;
+//?}
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -207,9 +209,10 @@ public final class Waypoints {
 
 	/**
 	 * Called every client tick: keeps the locator bar showing exactly the markers of the
-	 * dimension the player is in.
+	 * dimension the player is in. (The locator bar came with 1.21.6; before, markers only have their labels.)
 	 */
 	public static void tick(Minecraft client) {
+		//? if >=1.21.6 {
 		ClientPacketListener handler = client.getConnection();
 		if (handler != locatorBarOwner) {
 			// New connection: its locator bar starts empty.
@@ -240,6 +243,7 @@ public final class Waypoints {
 			handler.getWaypointManager().untrackWaypoint(TrackedWaypoint.empty(uuid));
 			return true;
 		});
+		//?}
 	}
 
 	// ---------------------------------------------------------------- file

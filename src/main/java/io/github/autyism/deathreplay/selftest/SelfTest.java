@@ -249,6 +249,7 @@ public final class SelfTest {
 					&& Math.abs(onScreen.x - width / 2.0) < width * 0.06 && Math.abs(onScreen.y - height / 2.0) < height * 0.08);
 			}
 
+			//? if >=1.21.6
 			check("the marker is on the locator bar after respawning", c.getConnection().getWaypointManager().hasWaypoints());
 		});
 		waitTicks("label drawn", 3);
@@ -263,7 +264,10 @@ public final class SelfTest {
 		});
 		waitTicks("marker gone", 3);
 		run("check the marker is gone", c ->
+			//? if >=1.21.6 {
 			check("deleting removes the marker and its locator bar dot", Waypoints.current(c).isEmpty() && !c.getConnection().getWaypointManager().hasWaypoints()));
+			//?} else
+			/*check("deleting removes the marker (no locator bar before 1.21.6)", Waypoints.current(c).isEmpty()));*/
 
 		respawnDuringReplayScript();
 		farTravelScript();
@@ -1231,8 +1235,11 @@ public final class SelfTest {
 			}
 		});
 		waitTicks("marker shown", 3);
+		//? if >=1.21.6 {
 		run("check the marker is on the locator bar", c ->
 			check("the marker was added to the client's locator bar", c.getConnection().getWaypointManager().hasWaypoints()));
+		//?} else
+		/*run("no locator bar before 1.21.6", c -> LOGGER.info("[SelfTest] NOTE no locator bar before 1.21.6; markers only have their labels (not a failure)"));*/
 		screenshot("marker_from_free_camera");
 
 		run("fly straight down through the ground", c -> DeathView.getSyntheticInput().up = -1.0);

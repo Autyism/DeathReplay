@@ -15,6 +15,7 @@ import io.github.autyism.deathreplay.waypoint.Waypoints;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+//? if >=1.21.6
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
@@ -49,12 +50,20 @@ public class DeathReplayClient implements ClientModInitializer {
 		watchReplayKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.watch_replay", GLFW.GLFW_KEY_F6, category));
 
 		waypointListKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.waypoints", InputConstants.UNKNOWN.getValue(), category));
+		//? if >=1.21.6 {
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(NAMESPACE, "waypoints"), (context, tickCounter) -> {
+		//?} else {
+		/*net.fabricmc.fabric.api.client.rendering.v1.HudLayerRegistrationCallback.EVENT.register(layers -> layers.addLayer(
+			net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer.of(Identifier.fromNamespaceAndPath(NAMESPACE, "waypoints"), (context, tickCounter) -> {
+		*///?}
 			Minecraft client = Minecraft.getInstance();
 			if (client.level != null && !client.options.hideGui) {
 				WaypointHud.render(context, client, client.level.dimension());
 			}
+		//? if >=1.21.6 {
 		});
+		//?} else
+		/*})));*/
 
 		ClientTickEvents.END_CLIENT_TICK.register(Waypoints::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(Recorder::tick);

@@ -48,6 +48,18 @@ stonecutter parameters {
         "\\b(getGameProfile|profile)\\(\\)\\.id\\(\\)" to "$1().getId()",
         "\\.startRiding\\(([\\w.]+), true, false\\)" to ".startRiding($1, true)",
     )
+    // Before 1.21.6: no ready-made way to find a point of the world on the screen (legacy.ScreenProjection does
+    // the same), some getters had other names, and a flat world's sky was asked for differently.
+    // Self-test only: screenshots had no size option.
+    oneWay(current.parsed < "1.21.6",
+        "\\bclient\\.gameRenderer\\.projectPointToScreen\\(" to "io.github.autyism.deathreplay.legacy.ScreenProjection.projectPointToScreen(client, ",
+        "\\.getCurrentVersion\\(\\)\\.name\\(\\)" to ".getCurrentVersion().getName()",
+        "\\.getCurrentVersion\\(\\)\\.dataVersion\\(\\)\\.version\\(\\)" to ".getCurrentVersion().getDataVersion().getVersion()",
+        "\\bcamera\\.position\\(\\)" to "camera.getPosition()",
+        "\\.getMainCamera\\(\\)\\.position\\(\\)" to ".getMainCamera().getPosition()",
+        "\\.voidDarknessOnsetRange\\(\\) == 1\\.0F" to ".getClearColorScale() == 1.0F",
+        "\\bc\\.getMainRenderTarget\\(\\), 1," to "c.getMainRenderTarget(),",
+    )
     // 26.1: GUI drawing became an "extract" pass (same arguments). In this code these calls only ever
     // go to GuiGraphics, and only screens override render / renderBackground.
     oneWay(current.parsed >= "26.1",

@@ -387,6 +387,8 @@ public final class Replay {
 	private static void attachRenderers(Minecraft client, @Nullable ClientLevel target) {
 		client.levelRenderer.setLevel(target);
 		client.particleEngine.setLevel(target);
+		// (Before 1.21.6 the level renderer set up the lighting of the level itself.)
+		//? if >=1.21.6
 		client.gameRenderer.setLevel(target);
 		//? if >=26.2 {
 		/*if (target != null && target == client.level && client.player != null) {

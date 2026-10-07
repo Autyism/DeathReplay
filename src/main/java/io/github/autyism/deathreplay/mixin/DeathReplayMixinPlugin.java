@@ -40,6 +40,9 @@ public class DeathReplayMixinPlugin implements IMixinConfigPlugin {
 		*///?} elif >=26.1 {
 		/*// Only exists from 26.1 on, so it is not in the mixin config that all versions share.
 		return List.of("ClientLevelMixin");
+		*///?} elif <1.21.6 {
+		/*// Only needed on 1.21.5, which has no ready-made way to find a point of the world on the screen.
+		return List.of("GameRendererFovInvoker");
 		*///?} else
 		return null;
 	}
