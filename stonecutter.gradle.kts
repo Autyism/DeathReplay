@@ -47,6 +47,12 @@ stonecutter parameters {
         "\\b(getGameProfile|profile)\\(\\)\\.name\\(\\)" to "$1().getName()",
         "\\b(getGameProfile|profile)\\(\\)\\.id\\(\\)" to "$1().getId()",
         "\\.startRiding\\(([\\w.]+), true, false\\)" to ".startRiding($1, true)",
+        // self-test only: clicks go in as plain numbers, the way real mouse input reaches screens on these versions
+        "\\bscreen\\.mouseClicked\\(([\\w\\[\\]]+), false\\)" to "screen.mouseClicked($1.x(), $1.y(), $1.button())",
+        "\\bscreen\\.mouseClicked\\(buttonClick\\(screen, (\\d)\\), false\\)" to "screen.mouseClicked(buttonClick(screen, $1).x(), buttonClick(screen, $1).y(), buttonClick(screen, $1).button())",
+        "\\bscreen\\.mouseClicked\\(new MouseButtonEvent\\(([^,]+), ([^,]+), new MouseButtonInfo\\(([\\w.]+), 0\\)\\), false\\)" to "screen.mouseClicked($1, $2, $3)",
+        "\\bscreen\\.mouseDragged\\((\\w+), " to "screen.mouseDragged($1.x(), $1.y(), $1.button(), ",
+        "\\bscreen\\.mouseReleased\\(([\\w\\[\\]]+)\\)" to "screen.mouseReleased($1.x(), $1.y(), $1.button())",
     )
     // Before 1.21.6: no ready-made way to find a point of the world on the screen (legacy.ScreenProjection does
     // the same), some getters had other names, and a flat world's sky was asked for differently.

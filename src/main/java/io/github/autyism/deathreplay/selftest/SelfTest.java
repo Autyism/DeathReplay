@@ -964,6 +964,22 @@ public final class SelfTest {
 			check("the view button switches the view", Replay.getView() == before.next());
 			Replay.setView(ReplayView.THIRD_PERSON);
 		});
+		//? if <1.21.9 {
+		/*// Before 1.21.9 keys reach screens as plain numbers, and the mod's screens take them through LegacyInputScreen.
+		run("press F5 and the arrow keys in the replay", c -> {
+			ReplayScreen screen = (ReplayScreen) c.screen;
+			int perspectiveKey = net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper.getBoundKeyOf(c.options.keyTogglePerspective).getValue();
+			check("F5 is taken by the replay screen", screen.keyPressed(perspectiveKey, 0, 0));
+			check("F5 switches the replay view", Replay.getView() == ReplayView.THIRD_PERSON.next());
+			Replay.setView(ReplayView.THIRD_PERSON);
+			int tick = Replay.getTick();
+			check("the left arrow is taken", screen.keyPressed(GLFW.GLFW_KEY_LEFT, 0, 0));
+			int back = Replay.getTick();
+			check("the left arrow steps back", back < tick);
+			check("the right arrow is taken", screen.keyPressed(GLFW.GLFW_KEY_RIGHT, 0, 0));
+			check("the right arrow steps forward", Replay.getTick() > back);
+		});
+		*///?}
 		run("hold the right mouse button to look", c -> {
 			ReplayScreen screen = (ReplayScreen) c.screen;
 			MouseButtonEvent right = new MouseButtonEvent(screen.width / 2.0, screen.height / 2.0, new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_RIGHT, 0));
@@ -1275,6 +1291,17 @@ public final class SelfTest {
 		waitTicks("game menu closed", 5);
 		run("check the same death screen is back", c ->
 			check("closing the game menu returns to the same death screen", c.screen == deathScreen[0] && c.screen instanceof DeathScreen));
+		//? if <1.21.9 {
+		/*// Esc as Fabric's keyboard event hands it over before 1.21.9 (key, scancode, modifiers).
+		run("press Esc on the death screen", c -> check("Esc on the death screen is taken by the mod",
+			!net.fabricmc.fabric.api.client.screen.v1.ScreenKeyboardEvents.allowKeyPress(c.screen).invoker().allowKeyPress(c.screen, GLFW.GLFW_KEY_ESCAPE, 0, 0)));
+		waitTicks("game menu from Esc", 5);
+		run("check the game menu from Esc", c -> check("Esc on the death screen opens the game menu", c.screen instanceof PauseScreen));
+		run("close the game menu again", c -> c.screen.onClose());
+		waitTicks("game menu closed again", 5);
+		run("check the death screen is back again", c ->
+			check("closing that game menu returns to the same death screen", c.screen == deathScreen[0] && c.screen instanceof DeathScreen));
+		*///?}
 	}
 
 	private void openWorld(Minecraft client) {
