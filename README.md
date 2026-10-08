@@ -5,7 +5,7 @@
 
 <p align="center"><a href="#english">English</a> · <a href="#简体中文">简体中文</a></p>
 
-![Minecraft 1.21.11 | 26.1–26.3](https://img.shields.io/badge/Minecraft-1.21.11_%7C_26.1--26.3-62B47A) ![Fabric](https://img.shields.io/badge/Loader-Fabric-DBD0B4) ![Client-side](https://img.shields.io/badge/Side-Client-5B8DEF) ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
+![Minecraft 1.21.5–26.3](https://img.shields.io/badge/Minecraft-1.21.5--26.3-62B47A) ![Fabric](https://img.shields.io/badge/Loader-Fabric-DBD0B4) ![Client-side](https://img.shields.io/badge/Side-Client-5B8DEF) ![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue)
 
 # English
 
@@ -200,7 +200,7 @@ The settings screen also has **Saved Replays...** and **Markers...** buttons. Ho
 
 | | |
 |---|---|
-| Minecraft | Java Edition 1.21.11 or 26.1–26.3 (each has its own jar; 26.x needs Java 25) |
+| Minecraft | Java Edition 1.21.5–1.21.11 or 26.1–26.3 (each has its own jar; 26.x needs Java 25) |
 | Mod loader | Fabric Loader 0.19.5 or newer |
 | Fabric API | Required |
 | Java | 21 or newer |
@@ -283,6 +283,7 @@ It records data, not video. Measured on a flat world, recording took about 0.02 
 - While you have markers in your current dimension, the locator bar replaces the experience bar.
 - The latest recording is kept in memory only until your next death or until you leave the world or server. Save it to keep it.
 - Replays can only be watched while you are in a world, and saved files only open in the Minecraft version they were saved with.
+- On 1.21.5 markers show only as name labels on screen: that version has no locator bar.
 
 </details>
 
@@ -491,7 +492,7 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 
 | | |
 |---|---|
-| Minecraft | Java 版 1.21.11 或 26.1–26.3（每个版本有单独的 jar；26.x 需要 Java 25） |
+| Minecraft | Java 版 1.21.5–1.21.11 或 26.1–26.3（每个版本有单独的 jar；26.x 需要 Java 25） |
 | 模组加载器 | Fabric Loader 0.19.5 或更高 |
 | Fabric API | 必需（前置） |
 | Java | 21 或更高 |
@@ -574,6 +575,7 @@ F6 只在没有打开任何界面时有效。在死亡界面上请点"回放"按
 - 当前维度里有标记时，定位栏会代替经验条显示。
 - 最近一次的录像只保存在内存里，直到下一次死亡或你退出世界 / 服务器为止。想留着就保存成文件。
 - 只有进入世界后才能观看回放；保存的文件只能在保存它的同一个 Minecraft 版本里打开。
+- 1.21.5 还没有定位栏，标记只显示成屏幕上的名字标签。
 
 </details>
 
