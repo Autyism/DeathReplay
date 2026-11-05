@@ -43,6 +43,7 @@ import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.client.Camera;
 import net.minecraft.client.CameraType;
 import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.DeathScreen;
 import net.minecraft.client.gui.screens.PauseScreen;
@@ -193,6 +194,21 @@ public final class SelfTest {
 		run("remove the block again", c -> command(c, "setblock 3 -60 8 minecraft:air"));
 		waitTicks("wait before death", 40);
 		screenshot("alive");
+		final long[] clipsBefore = {0};
+		run("save a clip of the last seconds (F7)", c -> {
+			clipsBefore[0] = countFiles(c, "clip_");
+			check("a clip can be saved while alive", Recorder.saveClip(c));
+		});
+		waitUntil("the clip file is written", c -> countFiles(c, "clip_") > clipsBefore[0], 20 * 20);
+		run("read the clip back", c -> {
+			java.nio.file.Path newest = newestFile(c, "clip_");
+			try {
+				Recording clip = io.github.autyism.deathreplay.record.ReplayFileReader.read(newest, c.level.registryAccess());
+				check("the clip file reads back as a clip of a few seconds", clip != null && clip.clip() && clip.tickCount() > 20);
+			} catch (Exception e) {
+				check("the clip file reads back (" + e + ")", false);
+			}
+		});
 
 		run("kill player", c -> command(c, "kill @s"));
 		waitUntil("death screen", c -> c.screen instanceof DeathScreen, 20 * 10);
@@ -432,6 +448,12 @@ public final class SelfTest {
 			check("the death message was captured", recording.deathMessage() != null);
 			if (killedByZombie[0]) {
 				check("the hits on the player were recorded", hitsOnPlayer >= 2);
+				java.util.List<io.github.autyism.deathreplay.replay.DamageTimeline.Hit> hits = io.github.autyism.deathreplay.replay.DamageTimeline.hits(recording);
+				for (var hit : hits) {
+					LOGGER.info("[SelfTest] hit at tick {}: {} -> {} ({})", hit.frame(), hit.before(), hit.after(), hit.source().getString());
+				}
+				check("the damage timeline has the hits, with health lost and a cause", hits.size() >= 2 && hits.stream().anyMatch(h -> h.lost() > 0.0F)
+					&& hits.stream().anyMatch(h -> h.source().getString().contains("Zombie") || h.source().getString().contains("僵尸")));
 			}
 
 			//? if >=26.3 {
@@ -466,8 +488,55 @@ public final class SelfTest {
 		run("close the combat replay", c -> c.screen.onClose());
 		waitTicks("closed", 3);
 		screenshot("combat_death_screen_still");
+		final long[] videosBefore = {0};
+		final boolean[] exporting = {false};
+		run("export the fight as a video", c -> {
+			videosBefore[0] = countVideos(c);
+			check("the replay opens for the video", Replay.open(c));
+		});
+		waitTicks("replay screen", 5);
+		run("start the video", c -> {
+			Component problem = io.github.autyism.deathreplay.replay.VideoExport.start(c);
+			if (problem != null) {
+				LOGGER.info("[SelfTest] NOTE no video: {}", problem.getString());
+			}
+			exporting[0] = problem == null;
+			check("the video export starts (ffmpeg found)", exporting[0]);
+		});
+		waitTicks("video half way", 40);
+		screenshot("video_export_running");
+		waitUntil("the video is done", c -> !io.github.autyism.deathreplay.replay.VideoExport.isActive(), 20 * 120);
+		run("the video file", c -> {
+			check("an mp4 file was written", countVideos(c) > videosBefore[0]);
+			LOGGER.info("[SelfTest] video file: {}", newestVideo(c));
+		});
+		run("close the replay after the video", c -> {
+			if (c.screen instanceof io.github.autyism.deathreplay.replay.ReplayScreen) {
+				c.screen.onClose();
+			}
+		});
+		waitTicks("closed", 3);
 		run("respawn after the fight", c -> c.player.respawn());
 		waitUntil("respawned after the fight", c -> c.player != null && !c.player.isDeadOrDying() && !(c.screen instanceof DeathScreen), 20 * 20);
+		// keep recording after the death (the death screen's toggle)
+		run("switch on: keep recording after death", c -> Recorder.setRecordAfterDeath(c, true));
+		waitTicks("recording again", 60);
+		run("die with it on", c -> command(c, "kill @s"));
+		waitUntil("death screen (recording after death)", c -> c.screen instanceof DeathScreen, 20 * 10);
+		waitTicks("dead for three seconds", 60);
+		run("still recording", c -> {
+			check("the recording goes on after the death", Recorder.isRecordingAfterDeath() && Recorder.secondsAfterDeath() > 1.5F);
+			check("the death screen can replay it already", Recorder.hasForDeathScreen());
+		});
+		screenshot("death_screen_recording_after_death");
+		run("respawn with it on", c -> c.player.respawn());
+		waitUntil("respawned (recording after death)", c -> c.player != null && !c.player.isDeadOrDying() && !(c.screen instanceof DeathScreen), 20 * 20);
+		waitTicks("frozen at the respawn", 5);
+		run("the recording runs to the respawn", c -> {
+			Recording last = Recorder.getLast();
+			check("the kept recording reaches past the death up to the respawn", last != null && last.tickCount() - last.deathFrame() > 40);
+			Recorder.setRecordAfterDeath(c, false);
+		});
 		run("clean up the combat scene", c -> {
 			command(c, "gamemode creative");
 			command(c, "kill @e[type=minecraft:zombie]");
@@ -1005,7 +1074,7 @@ public final class SelfTest {
 
 	/** A left click in the middle of the n-th button of the replay screen's bottom row. */
 	private static MouseButtonEvent buttonClick(ReplayScreen screen, int index) {
-		int count = 5;
+		int count = 6;
 		int gap = 4;
 		int buttonWidth = Math.min(78, (screen.width - 16 - gap * (count - 1)) / count);
 		int x = (screen.width - (buttonWidth * count + gap * (count - 1))) / 2 + index * (buttonWidth + gap) + buttonWidth / 2;
@@ -1469,6 +1538,38 @@ public final class SelfTest {
 			Screenshot.grab(c.gameDirectory, fileName, c.getMainRenderTarget(), 1,
 				message -> LOGGER.info("[SelfTest] screenshot saved: {}", fileName));
 		});
+	}
+
+	private static long countFiles(Minecraft c, String prefix) {
+		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(io.github.autyism.deathreplay.record.ReplayFileWriter.directory(c))) {
+			return files.filter(p -> p.getFileName().toString().startsWith(prefix)).count();
+		} catch (java.io.IOException e) {
+			return 0;
+		}
+	}
+
+	private static java.nio.file.Path newestFile(Minecraft c, String prefix) {
+		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(io.github.autyism.deathreplay.record.ReplayFileWriter.directory(c))) {
+			return files.filter(p -> p.getFileName().toString().startsWith(prefix)).max(java.util.Comparator.comparing(p -> p.getFileName().toString())).orElse(null);
+		} catch (java.io.IOException e) {
+			return null;
+		}
+	}
+
+	private static long countVideos(Minecraft c) {
+		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(io.github.autyism.deathreplay.replay.VideoExport.folder(c))) {
+			return files.filter(p -> p.getFileName().toString().endsWith(".mp4")).count();
+		} catch (java.io.IOException e) {
+			return 0;
+		}
+	}
+
+	private static java.nio.file.Path newestVideo(Minecraft c) {
+		try (java.util.stream.Stream<java.nio.file.Path> files = java.nio.file.Files.list(io.github.autyism.deathreplay.replay.VideoExport.folder(c))) {
+			return files.filter(p -> p.getFileName().toString().endsWith(".mp4")).max(java.util.Comparator.comparing(p -> p.getFileName().toString())).orElse(null);
+		} catch (java.io.IOException e) {
+			return null;
+		}
 	}
 
 	static void command(Minecraft client, String command) {

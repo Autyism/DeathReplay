@@ -16,6 +16,7 @@
 		"GameRendererMixin",
 		"InGameHudMixin",
 		"LightmapTextureManagerMixin",
+		"LivingHealthAccessor",
 		"MinecraftClientMixin",
 		"WorldMixin",
 		"WorldRendererMixin"

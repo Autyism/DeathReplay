@@ -135,7 +135,8 @@ public final class ReplayFileReader {
 			readSnapshot(root, registries),
 			new Vec3(deathPos.getDoubleOr(0, 0.0), deathPos.getDoubleOr(1, 0.0), deathPos.getDoubleOr(2, 0.0)),
 			deathMessage.isEmpty() ? null : Component.literal(deathMessage),
-			root.getLongOr("DeathTimeMillis", 0L)
+			root.getLongOr("DeathTimeMillis", 0L),
+			root.getBooleanOr("Clip", false)
 		);
 	}
 

@@ -20,7 +20,8 @@ import org.jetbrains.annotations.Nullable;
  *                       live world still being there
  * @param deathPos       where the player died
  * @param deathMessage   the death message shown on the death screen, if the server sent one
- * @param deathTimeMillis wall-clock time of the death
+ * @param deathTimeMillis wall-clock time of the death (of the save, for a clip)
+ * @param clip           saved by the player without dying (the mark is the moment of saving)
  */
 public record Recording(
 	List<Frame> frames,
@@ -31,7 +32,8 @@ public record Recording(
 	WorldSnapshot snapshot,
 	Vec3 deathPos,
 	@Nullable Component deathMessage,
-	long deathTimeMillis
+	long deathTimeMillis,
+	boolean clip
 ) {
 	public static final int TICKS_PER_SECOND = 20;
 

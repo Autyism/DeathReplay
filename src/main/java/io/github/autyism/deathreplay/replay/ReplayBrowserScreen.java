@@ -33,6 +33,7 @@ public class ReplayBrowserScreen extends Screen {
 	private static final int ROW_HEIGHT = 22;
 	private static final int FILES_PER_PAGE = 5;
 	private static final String FILE_PREFIX = "death_";
+	private static final String CLIP_PREFIX = "clip_";
 	private static final String FILE_SUFFIX = ".nbt";
 
 	@Nullable
@@ -130,9 +131,11 @@ public class ReplayBrowserScreen extends Screen {
 
 		try (Stream<Path> stream = Files.list(directory)) {
 			List<Path> found = new ArrayList<>(stream
-				.filter(path -> path.getFileName().toString().startsWith(FILE_PREFIX) && path.getFileName().toString().endsWith(FILE_SUFFIX))
+				.filter(path -> (path.getFileName().toString().startsWith(FILE_PREFIX) || path.getFileName().toString().startsWith(CLIP_PREFIX))
+					&& path.getFileName().toString().endsWith(FILE_SUFFIX))
 				.toList());
-			found.sort(Comparator.comparing((Path path) -> path.getFileName().toString()).reversed());
+			// newest first, deaths and clips mixed: by the time in the name
+			found.sort(Comparator.comparing((Path path) -> stampOf(path.getFileName().toString())).reversed());
 			return found;
 		} catch (IOException e) {
 			DeathReplayClient.LOGGER.warn("Could not list {}", directory, e);
@@ -140,10 +143,15 @@ public class ReplayBrowserScreen extends Screen {
 		}
 	}
 
-	/** "death_2026-10-01_12-32-27.nbt" becomes "2026-10-01 12:32:27  (25 KB)". */
+	private static String stampOf(String name) {
+		String prefix = name.startsWith(CLIP_PREFIX) ? CLIP_PREFIX : FILE_PREFIX;
+		return name.substring(prefix.length(), name.length() - FILE_SUFFIX.length());
+	}
+
+	/** "death_2026-10-01_12-32-27.nbt" becomes "2026-10-01 12:32:27  (25 KB)"; a clip says so in front. */
 	private static Component label(Path file) {
 		String name = file.getFileName().toString();
-		String stamp = name.substring(FILE_PREFIX.length(), name.length() - FILE_SUFFIX.length());
+		String stamp = stampOf(name);
 		int split = stamp.indexOf('_');
 		String shown = split > 0 ? stamp.substring(0, split) + " " + stamp.substring(split + 1).replaceFirst("-", ":").replaceFirst("-", ":") : stamp;
 		long kiloBytes;
@@ -153,7 +161,8 @@ public class ReplayBrowserScreen extends Screen {
 			kiloBytes = 0L;
 		}
 
-		return Component.translatable("deathreplay.browser.file", shown, kiloBytes);
+		Component line = Component.translatable("deathreplay.browser.file", shown, kiloBytes);
+		return name.startsWith(CLIP_PREFIX) ? Component.translatable("deathreplay.browser.clip", line) : line;
 	}
 
 	@Override

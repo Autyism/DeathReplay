@@ -38,6 +38,8 @@ public class DeathReplayClient implements ClientModInitializer {
 	private static KeyMapping watchReplayKey;
 	/** Opens the list of markers. Unbound by default. */
 	private static KeyMapping waypointListKey;
+	/** Saves the last seconds to a file right away, without dying. F7 by default. */
+	private static KeyMapping saveClipKey;
 
 	@Override
 	public void onInitializeClient() {
@@ -50,6 +52,7 @@ public class DeathReplayClient implements ClientModInitializer {
 		watchReplayKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.watch_replay", GLFW.GLFW_KEY_F6, category));
 
 		waypointListKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.waypoints", InputConstants.UNKNOWN.getValue(), category));
+		saveClipKey = KeyBindingHelper.registerKeyBinding(new KeyMapping("key.deathreplay.save_clip", GLFW.GLFW_KEY_F7, category));
 		//? if >=1.21.6 {
 		HudElementRegistry.addLast(Identifier.fromNamespaceAndPath(NAMESPACE, "waypoints"), (context, tickCounter) -> {
 		//?} else {
@@ -88,6 +91,12 @@ public class DeathReplayClient implements ClientModInitializer {
 		while (waypointListKey.consumeClick()) {
 			if (client.screen == null) {
 				client.setScreen(new WaypointListScreen(null));
+			}
+		}
+
+		while (saveClipKey.consumeClick()) {
+			if (client.player != null && !Recorder.saveClip(client)) {
+				client.player.displayClientMessage(Component.translatable("deathreplay.message.clip_nothing"), true);
 			}
 		}
 

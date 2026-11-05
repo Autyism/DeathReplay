@@ -33,6 +33,10 @@ Death Replay is a client-side Fabric mod. While you play, it keeps a short rolli
 - **Your world is never touched.** A replay plays in a separate copy of the terrain. When you close it, you are back in the real world exactly as it is now.
 - **Terrain along your whole route.** The copy covers the path you took during the recording, not only the place where you died. A replay that starts far away, after an elytra flight or a teleport, still has ground under it.
 - **Save replays to files.** Use Save Replay on the death screen, Save in the replay, or turn on auto-save. Saved replays can be watched later from the Saved Replays list, even after restarting the game.
+- **Save the last seconds any time.** Press F7 while alive: the last 30 seconds are saved as a clip, without dying. Clips are in the Saved Replays list, marked [Clip].
+- **Damage timeline.** Every hit you took is a red mark above the timeline (taller for harder hits); point at one to see how much health it cost and what did it (for example "Attack · Zombie"). Your health at the moment is shown next to the timeline.
+- **Keep recording after death.** The "Keep recording" button at the top right of the death screen (off by default) keeps the recording going until you respawn or leave, so you can also watch what happened after you died.
+- **Export as a video.** The Video button in a replay plays it once from the start and saves it as an mp4 in `deathreplay/videos` (30 fps, at most 1080 pixels tall, no menus in the picture, no sound). It needs ffmpeg: `config/deathreplay/ffmpeg.exe`, or the copy Menu Video brings, or ffmpeg installed on the computer.
 
 ### Death screen camera
 
@@ -51,7 +55,7 @@ Death Replay is a client-side Fabric mod. While you play, it keeps a short rolli
 ### What it does not do
 
 - **It sends nothing.** Death Replay itself sends no packets to the server and registers no network channels. It does not change gameplay or press any keys for you.
-- **Nothing live after respawning.** The moment you respawn, the camera is back on your player. After that, all you can watch is the recording, which ends 0.75 seconds after your death (or at the moment you respawn, if that comes first).
+- **Nothing live after respawning.** The moment you respawn, the camera is back on your player. After that, all you can watch is the recording, which ends 0.75 seconds after your death (or at the moment you respawn, if that comes first; with "Keep recording" on, at the respawn).
 - **Respawning works exactly as in vanilla.** The mod never delays or holds back your respawn.
 
 </details>
@@ -100,6 +104,7 @@ The settings screen with its default values.
 | Watch Death Replay (after respawning) | F6 | Options → Controls → Key Binds → Death Replay |
 | Open Settings | Not bound | Options → Controls → Key Binds → Death Replay |
 | Marker List | Not bound | Options → Controls → Key Binds → Death Replay |
+| Save the last seconds (clip) | F7 | Options → Controls → Key Binds → Death Replay |
 | Switch view (Look Around and replays) | F5 (your Toggle Perspective key) | Options → Controls → Key Binds |
 | Fly the free camera | W / A / S / D (your movement keys) | Options → Controls → Key Binds |
 | Fly up / down | Space / Left Shift (your Jump / Sneak keys) | Options → Controls → Key Binds |
@@ -121,7 +126,7 @@ The camera keys follow whatever you have bound in the vanilla controls. F6 only 
 | Camera distance (Third Person) / flight speed (Free Camera) | Mouse wheel |
 | Close | Esc |
 
-The buttons at the bottom do the same: Restart, Play / Pause, the current view (click to switch), Save and Close. Dragging the timeline pauses playback; if it was playing, it continues when you let go. Pressing Play at the end starts the replay again from the beginning.
+The buttons at the bottom do the same: Restart, Play / Pause, the current view (click to switch), Save, Video and Close. While a video is made, Esc cancels it. Dragging the timeline pauses playback; if it was playing, it continues when you let go. Pressing Play at the end starts the replay again from the beginning.
 
 **While looking around (death screen)**
 
@@ -325,6 +330,10 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 - **不碰真实世界。** 回放是在一份单独的地形副本里播放的。关掉回放，眼前就是世界现在的真实样子。
 - **整条路线的地形都在。** 地形副本覆盖录像期间你走过的整条路线，而不只是死亡点附近。就算回放开头你还在很远的地方（比如刚用鞘翅飞过来，或者刚被传送过来），脚下也有地形。
 - **保存成文件。** 在死亡界面点"保存回放"、在回放里点"保存"，或者打开自动保存。保存好的回放之后可以在"已保存的回放"列表里观看，重启游戏也没问题。
+- **随时保存最近一段。** 活着的时候按 F7，不用死就把最近 30 秒存成一个片段，在"已保存的回放"里标着 [片段]。
+- **伤害时间线。** 你挨的每一下都是进度条上方的一根红线（打得越重越高）；鼠标指上去能看到掉了多少血、被什么打的（比如"攻击 · 僵尸"）。进度条旁边显示当时的血量。
+- **死后继续录制。** 死亡界面右上角的"死后继续录制"按钮（默认关）打开后，会一直录到你重生或退出，死后发生的事也能看。
+- **导出视频。** 回放里的"导出视频"按钮会从头播一遍，存成 mp4，放在 `deathreplay/videos`（30 帧，最高 1080 像素，画面里没有界面，没有声音）。需要 ffmpeg：`config/deathreplay/ffmpeg.exe`，或者 Menu Video 带的那个，或者电脑上装好的 ffmpeg。
 
 ### 死亡界面自由视角
 
@@ -343,7 +352,7 @@ Death Replay 是一个纯客户端的 Fabric 模组。你在玩的时候，它�
 ### 它不会做的事
 
 - **不发送任何东西。** 模组本身不向服务器发送任何数据包，也不注册任何网络频道；不改变玩法，也不替你按任何键。
-- **重生后看不到实时画面。** 一重生，镜头立刻回到你的角色身上。之后能看的只有录像，录像在死亡后 0.75 秒结束（如果在这之前就重生了，就截止到重生那一刻）。
+- **重生后看不到实时画面。** 一重生，镜头立刻回到你的角色身上。之后能看的只有录像，录像在死亡后 0.75 秒结束（如果在这之前就重生了，就截止到重生那一刻；打开了"死后继续录制"就录到重生）。
 - **重生和原版完全一样。** 模组从不延迟或拦下你的重生。
 
 </details>

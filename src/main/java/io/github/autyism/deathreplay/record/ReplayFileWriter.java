@@ -129,7 +129,7 @@ public final class ReplayFileWriter {
 
 		savingRecording = recording;
 		Path directory = directory(client);
-		String baseName = "death_" + FILE_TIME.format(Instant.ofEpochMilli(recording.deathTimeMillis()));
+		String baseName = (recording.clip() ? "clip_" : "death_") + FILE_TIME.format(Instant.ofEpochMilli(recording.deathTimeMillis()));
 		return CompletableFuture.supplyAsync(() -> {
 			try {
 				Files.createDirectories(directory);
@@ -185,6 +185,7 @@ public final class ReplayFileWriter {
 		root.put("DeathPos", deathPos);
 		root.putString("DeathMessage", recording.deathMessage() == null ? "" : recording.deathMessage().getString());
 		root.putInt("DeathFrame", recording.deathFrame());
+		root.putBoolean("Clip", recording.clip());
 		root.putInt("TickCount", recording.tickCount());
 
 		CompoundTag player = new CompoundTag();

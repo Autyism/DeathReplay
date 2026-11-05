@@ -57,6 +57,8 @@ public final class Recorder {
 	 * every entity the client knows, 20 ticks after death; stop a little before that.
 	 */
 	public static final int DEATH_TAIL_TICKS = 15;
+	/** Recording after death stops by itself after this long (memory). */
+	public static final int MAX_AFTER_DEATH_TICKS = 5 * 60 * Recording.TICKS_PER_SECOND;
 
 	private enum State {
 		/** No world, or the player joined dead: nothing to record yet. */
@@ -64,6 +66,8 @@ public final class Recorder {
 		RECORDING,
 		/** Player is dead, appending the tail. */
 		TAIL,
+		/** Player is dead and "keep recording after death" is on: recording until the respawn or leaving. */
+		AFTER,
 		/** Recording frozen, waiting for the respawn. */
 		FROZEN
 	}
@@ -150,7 +154,87 @@ public final class Recorder {
 
 	/** True while events should be collected. */
 	public static boolean isCapturing() {
-		return state == State.RECORDING || state == State.TAIL;
+		return state == State.RECORDING || state == State.TAIL || state == State.AFTER;
+	}
+
+	/** True while the player is dead and the recording goes on (see the death screen's toggle). */
+	public static boolean isRecordingAfterDeath() {
+		return state == State.AFTER || state == State.TAIL && DeathReplayConfig.get().recordAfterDeath;
+	}
+
+	/** Seconds recorded since the death, while recording after death. */
+	public static float secondsAfterDeath() {
+		return state == State.AFTER ? (BUFFER.size() - 1 - deathFrame) / (float) Recording.TICKS_PER_SECOND : 0F;
+	}
+
+	/**
+	 * What the death screen offers to watch and save: the frozen death, or, while still recording after the death, a
+	 * copy of everything up to now (the recording goes on).
+	 */
+	@Nullable
+	public static Recording getForDeathScreen(Minecraft client) {
+		if (state == State.AFTER && world != null && player != null && !BUFFER.isEmpty()) {
+			return copyOf(client, world, player, deathFrame, deathMessage, deathTimeMillis, false);
+		}
+
+		return frozen;
+	}
+
+	/** True when there is something {@link #getForDeathScreen} can give. */
+	public static boolean hasForDeathScreen() {
+		return frozen != null || state == State.AFTER && !BUFFER.isEmpty();
+	}
+
+	/**
+	 * The death screen's toggle: on, the recording goes on until the respawn (also when the death was already frozen,
+	 * as long as the player is still dead); off, it stops now.
+	 */
+	public static void setRecordAfterDeath(Minecraft client, boolean on) {
+		DeathReplayConfig config = DeathReplayConfig.get();
+		config.recordAfterDeath = on;
+		config.save();
+		if (client.level == null || client.player == null) {
+			return;
+		}
+
+		if (on && state == State.FROZEN && frozen != null && client.player == player && client.player.isDeadOrDying()) {
+			// Already frozen: carry on from the frozen frames
+			BUFFER.clear();
+			BUFFER.addAll(frozen.frames());
+			deathFrame = frozen.deathFrame();
+			frozen = null;
+			state = State.AFTER;
+		} else if (!on && state == State.AFTER && world != null && player != null) {
+			freeze(client, world, player);
+		}
+	}
+
+	/**
+	 * Saves the last seconds (as long as the replay buffer) to a file right now, without dying. The recording goes
+	 * on. Returns false when there is nothing to save (not recording).
+	 */
+	public static boolean saveClip(Minecraft client) {
+		if (state != State.RECORDING || world == null || player == null || BUFFER.size() < 2) {
+			return false;
+		}
+
+		Recording clip = copyOf(client, world, player, BUFFER.size() - 1, null, System.currentTimeMillis(), true);
+		ReplayFileWriter.saveAndAnnounce(client, clip);
+		DeathReplayClient.LOGGER.info("Saved a clip of the last {} s", String.format("%.1f", clip.seconds()));
+		return true;
+	}
+
+	/** A recording of the frames so far, leaving the buffer as it is */
+	private static Recording copyOf(Minecraft client, ClientLevel currentWorld, LocalPlayer currentPlayer, int markFrame, @Nullable Component message,
+									long timeMillis, boolean clip) {
+		List<Frame> frames = List.copyOf(BUFFER);
+		EntitySample atMark = frames.get(Math.min(markFrame, frames.size() - 1)).find(currentPlayer.getId());
+		Long2ObjectMap<ClientboundLevelChunkWithLightPacket> unloaded = new Long2ObjectOpenHashMap<>();
+		UNLOADED_CHUNKS.forEach((pos, chunk) -> unloaded.put((long) pos, chunk.packet()));
+		WorldSnapshot snapshot = WorldSnapshot.capture(currentWorld, currentPlayer.chunkPosition(), route(frames, currentPlayer.getId()), unloaded,
+			client.options.getEffectiveRenderDistance());
+		return new Recording(frames, Math.min(markFrame, frames.size() - 1), currentPlayer.getId(), currentPlayer.getGameProfile().name(), currentPlayer.getUUID(),
+			snapshot, atMark != null ? atMark.pos() : currentPlayer.position(), message, timeMillis, clip);
 	}
 
 	public static int bufferedTicks() {
@@ -164,6 +248,17 @@ public final class Recorder {
 		LocalPlayer currentPlayer = client.player;
 		ClientLevel currentWorld = client.level;
 		if (currentPlayer == null || currentWorld == null) {
+			if (state == State.AFTER && world != null && player != null) {
+				// Left while recording after the death: keep it as a file, it cannot be watched without the server
+				try {
+					freeze(client, world, player);
+					if (frozen != null && !DeathReplayConfig.get().autoSave) {
+						ReplayFileWriter.saveAsync(client, frozen, world.registryAccess());
+					}
+				} catch (RuntimeException e) {
+					DeathReplayClient.LOGGER.warn("Could not keep the recording after death when leaving", e);
+				}
+			}
 			if (world != null || last != null) {
 				// Left the server: a recording is only meaningful with that server's registries.
 				reset();
@@ -175,7 +270,7 @@ public final class Recorder {
 		}
 
 		if (currentWorld != world || currentPlayer != player) {
-			if (state == State.TAIL && world != null && player != null) {
+			if ((state == State.TAIL || state == State.AFTER) && world != null && player != null) {
 				// Respawned before the death tail was complete (the "immediate respawn" game rule skips
 				// the death screen): keep what was recorded up to now instead of dropping the death.
 				try {
@@ -228,6 +323,16 @@ public final class Recorder {
 			case TAIL -> {
 				captureFrame(currentWorld, currentPlayer);
 				if (--tailTicksLeft <= 0) {
+					if (DeathReplayConfig.get().recordAfterDeath) {
+						state = State.AFTER;
+					} else {
+						freeze(client, currentWorld, currentPlayer);
+					}
+				}
+			}
+			case AFTER -> {
+				captureFrame(currentWorld, currentPlayer);
+				if (BUFFER.size() - deathFrame > MAX_AFTER_DEATH_TICKS) {
 					freeze(client, currentWorld, currentPlayer);
 				}
 			}
@@ -271,7 +376,8 @@ public final class Recorder {
 			snapshot,
 			atDeath != null ? atDeath.pos() : currentPlayer.position(),
 			deathMessage,
-			deathTimeMillis
+			deathTimeMillis,
+			false
 		);
 		last = frozen;
 		respawnHintPending = true;

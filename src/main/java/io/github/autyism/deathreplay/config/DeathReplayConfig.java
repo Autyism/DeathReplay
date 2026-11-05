@@ -35,6 +35,12 @@ public final class DeathReplayConfig {
 	public boolean respawnHint = true;
 	/** Death screen free camera on/off. */
 	public boolean deathFreeCamera = true;
+	/** Keep recording after the death until the respawn (or leaving); switched on the death screen. Off by default. */
+	public boolean recordAfterDeath = false;
+	/** Frames per second of exported videos */
+	public int videoFps = 30;
+	/** Exported videos are made at most this tall (the window size otherwise); 0 = the window size */
+	public int videoMaxHeight = 1080;
 	/** Camera mode the death screen starts in. */
 	public DeathCameraMode deathCameraMode = DeathCameraMode.THIRD_PERSON;
 

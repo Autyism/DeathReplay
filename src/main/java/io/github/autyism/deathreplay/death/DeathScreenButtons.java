@@ -66,7 +66,12 @@ public final class DeathScreenButtons {
 		int firstRow = scaledHeight / 4 + FIRST_ROW_OFFSET;
 		int secondRow = scaledHeight / 4 + SECOND_ROW_OFFSET;
 
-		Button replay = Button.builder(Component.translatable("deathreplay.button.replay"), button -> Replay.open(client))
+		Button replay = Button.builder(Component.translatable("deathreplay.button.replay"), button -> {
+			Recording recording = Recorder.getForDeathScreen(client);
+			if (recording != null) {
+				Replay.open(client, recording);
+			}
+		})
 			.bounds(left, firstRow, freeCamera ? HALF_WIDTH : FULL_WIDTH, 20)
 			.build();
 		Button save = Button.builder(Component.translatable("deathreplay.button.save"), button -> save(client))
@@ -83,15 +88,30 @@ public final class DeathScreenButtons {
 			);
 		}
 
+		// Keep recording after the death, until the respawn (off by default): top right, out of vanilla's way
+		Button keep = Button.builder(recordAfterLabel(), button -> {
+			Recorder.setRecordAfterDeath(client, !DeathReplayConfig.get().recordAfterDeath);
+			button.setMessage(recordAfterLabel());
+		}).bounds(scaledWidth - 164, 4, 160, 20).build();
+		Screens.getButtons(screen).add(keep);
+		ScreenEvents.afterRender(screen).register((rendered, context, mouseX, mouseY, tickDelta) -> {
+			if (Recorder.isRecordingAfterDeath()) {
+				Component line = Component.translatable("deathreplay.death.recording_after", String.format("%.0f", Recorder.secondsAfterDeath()));
+				context.drawString(Screens.getTextRenderer(rendered), line, scaledWidth - 4 - Screens.getTextRenderer(rendered).width(line), 28, 0xFFFF6060);
+			}
+		});
+
 		// The recording is frozen a moment after the death screen opens, and saving finishes on
 		// another thread, so the buttons follow the state tick by tick.
 		Runnable refresh = () -> {
 			Recording recording = Recorder.getFrozen();
+			boolean available = Recorder.hasForDeathScreen();
 			// On the death screen "Replay" means this death, not an older one still in memory.
-			replay.active = recording != null && Replay.canPlay(client);
+			replay.active = available && Replay.canPlay(client);
 			boolean saved = recording != null && ReplayFileWriter.isSaved(recording);
-			save.active = recording != null && !saved && !ReplayFileWriter.isSaving(recording);
+			save.active = available && !saved && (recording == null || !ReplayFileWriter.isSaving(recording));
 			save.setMessage(Component.translatable(saved ? "deathreplay.button.saved" : "deathreplay.button.save"));
+			keep.setMessage(recordAfterLabel());
 		};
 		refresh.run();
 		ScreenEvents.afterTick(screen).register(tickedScreen -> refresh.run());
@@ -104,8 +124,12 @@ public final class DeathScreenButtons {
 		}
 	}
 
+	private static Component recordAfterLabel() {
+		return Component.translatable(DeathReplayConfig.get().recordAfterDeath ? "deathreplay.button.record_after.on" : "deathreplay.button.record_after.off");
+	}
+
 	private static void save(Minecraft client) {
-		Recording recording = Recorder.getFrozen();
+		Recording recording = Recorder.getForDeathScreen(client);
 		if (recording != null) {
 			ReplayFileWriter.saveAndAnnounce(client, recording);
 		}

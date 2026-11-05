@@ -116,7 +116,7 @@ stonecutter parameters {
     oneWay(current.parsed >= "26.3",
         "\\bGLFW\\.GLFW_KEY_ENTER\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_RETURN",
         "\\bGLFW\\.GLFW_KEY_KP_ENTER\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_NUMPADENTER",
-        "\\bGLFW\\.GLFW_KEY_(ESCAPE|LEFT|RIGHT|R|F6)\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_$1",
+        "\\bGLFW\\.GLFW_KEY_(ESCAPE|LEFT|RIGHT|R|F6|F7)\\b" to "com.mojang.blaze3d.platform.InputConstants.KEY_$1",
         "\\bGLFW\\.GLFW_MOUSE_BUTTON_(LEFT|RIGHT)\\b" to "com.mojang.blaze3d.platform.InputConstants.MOUSE_BUTTON_$1",
         // opening a folder moved too
         "\\bUtil\\.getPlatform\\(\\)\\.openPath\\(" to "com.mojang.blaze3d.Blaze3D.openPath(",

@@ -30,6 +30,15 @@ public abstract class GameRendererMixin {
 		}
 	}
 
+	/** A video export reads the picture right after the world is drawn, before the HUD and the menus. */
+	//? if >=26.3 {
+	/*@Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel()V", shift = At.Shift.AFTER), require = 0)
+	*///?} else
+	@Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/GameRenderer;renderLevel(Lnet/minecraft/client/DeltaTracker;)V", shift = At.Shift.AFTER), require = 0)
+	private void deathreplay$afterWorld(CallbackInfo ci) {
+		io.github.autyism.deathreplay.replay.VideoExport.afterWorld(net.minecraft.client.Minecraft.getInstance());
+	}
+
 	/** The block the real player happens to look at must not be outlined in a detached view. */
 	@Inject(method = "shouldRenderBlockOutline", at = @At("HEAD"), cancellable = true)
 	private void deathreplay$noBlockOutlineWhileDetached(CallbackInfoReturnable<Boolean> cir) {

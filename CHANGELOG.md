@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.0 — 2026-11-05
+
+For Minecraft 1.21.5–26.3.
+
+- New: **F7 saves the last seconds** as a clip at any time, without dying ([Clip] in the Saved Replays list).
+- New: **damage timeline**: every hit is a mark above the timeline; point at it for the health it cost and what did it. Your health is shown beside the timeline.
+- New: **keep recording after death** (button at the top right of the death screen, off by default): the recording goes on until you respawn or leave.
+- New: **export a replay as an mp4 video** (the Video button; needs ffmpeg). The menus are not in the video.
+
+### 中文
+
+适用于 Minecraft 1.21.5–26.3。
+
+- 新功能：**按 F7 随时保存最近一段**，不用死（在已保存的回放里标着 [片段]）。
+- 新功能：**伤害时间线**：每次挨打都在进度条上方有标记，鼠标指上去看掉了多少血、被什么打的；进度条旁边显示血量。
+- 新功能：**死后继续录制**（死亡界面右上角的按钮，默认关）：一直录到重生或退出。
+- 新功能：**把回放导出成 mp4 视频**（"导出视频"按钮，需要 ffmpeg），界面不会录进去。
+
 ## 0.1.0+1.21.10 — 2026-10-08
 
 - Death Replay for Minecraft 1.21.9–1.21.10, same features as 0.1.0 for 1.21.11.

@@ -29,6 +29,9 @@ public class ReplayScreen extends Screen {
 	private static final int BAR_BACKGROUND = 0xA0000000;
 	private static final int BAR_FILL = 0xFFFFFFFF;
 	private static final int BAR_DEATH_MARK = 0xFFFF5555;
+	private static final int CLIP_MARK = 0xFFFFDD55;
+	private static final int HIT_MARK = 0xFFFF3030;
+	private static final int HEALTH_COLOR = 0xFFFF8080;
 	private static final int BAR_TOP = 22;
 	private static final int BAR_HEIGHT = 6;
 	/** How far above and below the bar a click still counts as a click on it. */
@@ -47,6 +50,7 @@ public class ReplayScreen extends Screen {
 	private Button playButton;
 	private Button viewButton;
 	private Button saveButton;
+	private Button exportButton;
 	/** True while the left mouse button is dragging the timeline. */
 	private boolean scrubbing;
 	private boolean wasPlayingBeforeScrub;
@@ -67,7 +71,7 @@ public class ReplayScreen extends Screen {
 	protected void init() {
 		Replay.setControlling(this.minecraft, true);
 
-		int count = 5;
+		int count = 6;
 		int buttonWidth = Math.min(MAX_BUTTON_WIDTH, (this.width - 16 - BUTTON_GAP * (count - 1)) / count);
 		int x = (this.width - (buttonWidth * count + BUTTON_GAP * (count - 1))) / 2;
 		int y = this.height - BUTTON_HEIGHT - 6;
@@ -82,7 +86,14 @@ public class ReplayScreen extends Screen {
 				ReplayFileWriter.saveAndAnnounce(this.minecraft, recording);
 			}
 		}));
-		this.addRenderableWidget(this.button(Component.translatable("deathreplay.replay.button.close"), x + step * 4, y, buttonWidth, this::onClose));
+		this.exportButton = this.addRenderableWidget(this.button(Component.translatable("deathreplay.replay.button.export"), x + step * 4, y, buttonWidth, () -> {
+			Component problem = VideoExport.start(this.minecraft);
+			if (problem != null) {
+				this.notice = problem;
+				this.noticeTicksLeft = NOTICE_TICKS * 4;
+			}
+		}));
+		this.addRenderableWidget(this.button(Component.translatable("deathreplay.replay.button.close"), x + step * 5, y, buttonWidth, this::onClose));
 		this.refreshButtons();
 	}
 
@@ -101,10 +112,24 @@ public class ReplayScreen extends Screen {
 		boolean saved = recording != null && ReplayFileWriter.isSaved(recording);
 		this.saveButton.setMessage(Component.translatable(saved ? "deathreplay.replay.button.saved" : "deathreplay.replay.button.save"));
 		this.saveButton.active = recording != null && !saved && !ReplayFileWriter.isSaving(recording);
+		// while a video is made, the replay must play through untouched
+		boolean exporting = VideoExport.isActive();
+		for (var child : this.children()) {
+			if (child instanceof Button button && button != this.saveButton) {
+				button.active = !exporting;
+			}
+		}
+		if (exporting) {
+			this.saveButton.active = false;
+		}
 	}
 
 	@Override
 	public void removed() {
+		if (VideoExport.isActive()) {
+			VideoExport.cancel(this.minecraft);
+		}
+
 		// Whatever replaces this screen, the real world goes back on screen first.
 		Replay.endPlayback(this.minecraft);
 	}
@@ -120,6 +145,8 @@ public class ReplayScreen extends Screen {
 		if (this.noticeTicksLeft > 0) {
 			this.noticeTicksLeft--;
 		}
+
+		VideoExport.watchdog(this.minecraft);
 	}
 
 	@Override
@@ -163,6 +190,10 @@ public class ReplayScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent click, boolean doubled) {
+		if (VideoExport.isActive()) {
+			return true;
+		}
+
 		if (super.mouseClicked(click, doubled)) {
 			return true;
 		}
@@ -235,6 +266,14 @@ public class ReplayScreen extends Screen {
 
 	@Override
 	public boolean keyPressed(KeyEvent input) {
+		if (VideoExport.isActive()) {
+			if (input.key() == GLFW.GLFW_KEY_ESCAPE) {
+				VideoExport.cancel(this.minecraft);
+			}
+
+			return true;
+		}
+
 		if (this.minecraft.options.keyTogglePerspective.matches(input)) {
 			Replay.cycleView();
 			return true;
@@ -279,14 +318,33 @@ public class ReplayScreen extends Screen {
 		context.fill(barLeft - 1, BAR_TOP - 1, barLeft + barWidth + 1, BAR_TOP + BAR_HEIGHT + 1, BAR_BACKGROUND);
 		context.fill(barLeft, BAR_TOP, knobX, BAR_TOP + BAR_HEIGHT, BAR_FILL);
 		int deathX = barLeft + barWidth * recording.deathFrame() / lastTick;
-		context.fill(deathX, BAR_TOP - 2, deathX + 1, BAR_TOP + BAR_HEIGHT + 2, BAR_DEATH_MARK);
+		context.fill(deathX, BAR_TOP - 2, deathX + 1, BAR_TOP + BAR_HEIGHT + 2, recording.clip() ? CLIP_MARK : BAR_DEATH_MARK);
+		// every hit the player took: a red tick above the bar, taller for harder hits
+		DamageTimeline.Hit hovered = null;
+		for (DamageTimeline.Hit hit : DamageTimeline.hits(recording)) {
+			int hx = barLeft + barWidth * hit.frame() / lastTick;
+			int size = 3 + Math.min(5, Math.round(hit.lost() / 2.0F));
+			context.fill(hx - 1, BAR_TOP - 2 - size, hx + 1, BAR_TOP - 1, HIT_MARK);
+			if (Math.abs(mouseX - hx) <= 2 && mouseY >= BAR_TOP - 10 && mouseY <= BAR_TOP + BAR_HEIGHT + 2) {
+				hovered = hit;
+			}
+		}
 		context.fill(knobX - 1, BAR_TOP - 3, knobX + 2, BAR_TOP + BAR_HEIGHT + 3, BAR_FILL);
+		float[] health = DamageTimeline.health(recording);
+		if (tick < health.length && health[tick] >= 0.0F) {
+			context.drawString(this.font, Component.translatable("deathreplay.replay.health", String.format("%.1f", health[tick])), barLeft + barWidth + 6, BAR_TOP - 1, HEALTH_COLOR);
+		}
 
 		float toDeath = (tick - recording.deathFrame()) / (float) Recording.TICKS_PER_SECOND;
-		Component time = toDeath <= 0.0F
+		Component time = recording.clip()
+			? Component.translatable("deathreplay.replay.time.clip", String.format("%.1f", Math.max(0.0F, -toDeath)))
+			: toDeath <= 0.0F
 			? Component.translatable("deathreplay.replay.time.before", String.format("%.1f", -toDeath))
 			: Component.translatable("deathreplay.replay.time.after", String.format("%.1f", toDeath));
 		context.drawCenteredString(this.font, time, centerX, BAR_TOP + BAR_HEIGHT + 6, TEXT_COLOR);
+		if (hovered != null) {
+			this.drawHit(context, recording, hovered, mouseX);
+		}
 
 		Component perspectiveKey = this.minecraft.options.keyTogglePerspective.getTranslatedKeyMessage();
 		Component viewHint = switch (Replay.getView()) {
@@ -298,9 +356,31 @@ public class ReplayScreen extends Screen {
 		context.drawCenteredString(this.font, Component.translatable("deathreplay.replay.hint.mark"), centerX, this.height - BUTTON_HEIGHT - 32, HINT_COLOR);
 
 		WaypointHud.render(context, this.minecraft, recording.dimension());
+		if (VideoExport.isActive()) {
+			Component line = Component.translatable("deathreplay.video.progress", Math.round(VideoExport.progress() * 100));
+			int w = this.font.width(line) + 12;
+			context.fill(centerX - w / 2, this.height / 2 - 12, centerX + w / 2, this.height / 2 + 4, 0xC0000000);
+			context.drawCenteredString(this.font, line, centerX, this.height / 2 - 8, 0xFFFF5555);
+		}
 		if (this.notice != null && this.noticeTicksLeft > 0) {
 			context.drawCenteredString(this.font, this.notice, centerX, BAR_TOP + BAR_HEIGHT + 20, NOTICE_COLOR);
 		}
+	}
+
+	/** A small box under the timeline: how much health the hit cost, what did it, when */
+	private void drawHit(GuiGraphics context, Recording recording, DamageTimeline.Hit hit, int mouseX) {
+		float seconds = (recording.deathFrame() - hit.frame()) / (float) Recording.TICKS_PER_SECOND;
+		Component first = Component.translatable("deathreplay.replay.hit", String.format("%.1f", hit.lost()), String.format("%.1f", hit.before()), String.format("%.1f", Math.max(0.0F, hit.after())));
+		Component second = hit.source();
+		Component third = Component.translatable(recording.clip() ? "deathreplay.replay.time.clip" : "deathreplay.replay.time.before", String.format("%.1f", Math.max(0.0F, seconds)));
+		int w = Math.max(this.font.width(first), Math.max(this.font.width(second), this.font.width(third))) + 8;
+		int x = Math.max(2, Math.min(this.width - w - 2, mouseX - w / 2));
+		int y = BAR_TOP + BAR_HEIGHT + 18;
+		context.fill(x, y, x + w, y + 34, 0xE0101010);
+		context.fill(x, y, x + w, y + 1, HIT_MARK);
+		context.drawString(this.font, first, x + 4, y + 3, 0xFFFF7070);
+		context.drawString(this.font, second, x + 4, y + 13, TEXT_COLOR);
+		context.drawString(this.font, third, x + 4, y + 23, HINT_COLOR);
 	}
 
 	@Override
