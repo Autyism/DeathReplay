@@ -1,4 +1,4 @@
-<p align="center"><img src="docs/icon.png" width="128" alt="icon"></p>
+<p align="center"><img src="docs/icon_transparent.png" width="128" alt="icon"></p>
 <h1 align="center">Death Replay</h1>
 <p align="center">Find out how you died: rewatch the last seconds before your death, and look around freely on the death screen.</p>
 <p align="center">看清自己是怎么死的：回看死前的最后几秒，还能在死亡界面自由转动镜头查看现场。</p>
