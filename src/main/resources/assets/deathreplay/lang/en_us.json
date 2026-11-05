@@ -142,5 +142,8 @@
 	"deathreplay.video.failed": "The video could not be made: %s",
 	"deathreplay.video.cancelled": "Video cancelled.",
 	"deathreplay.video.no_ffmpeg": "Making videos needs ffmpeg: put ffmpeg.exe into %s (or install ffmpeg). Menu Video's copy is found too.",
-	"deathreplay.video.unsupported": "This game version cannot make videos of replays."
+	"deathreplay.video.unsupported": "This game version cannot make videos of replays.",
+	"deathreplay.manual.title": "Death Replay manual",
+	"deathreplay.manual.search": "Search the manual...",
+	"deathreplay.manual.button": "Manual"
 }

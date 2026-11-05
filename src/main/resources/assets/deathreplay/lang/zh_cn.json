@@ -142,5 +142,8 @@
 	"deathreplay.video.failed": "视频没做成：%s",
 	"deathreplay.video.cancelled": "已取消导出视频。",
 	"deathreplay.video.no_ffmpeg": "导出视频需要 ffmpeg：把 ffmpeg.exe 放进 %s（或者装好 ffmpeg）。装了 Menu Video 的话会直接用它带的那个。",
-	"deathreplay.video.unsupported": "这个游戏版本做不了回放视频。"
+	"deathreplay.video.unsupported": "这个游戏版本做不了回放视频。",
+	"deathreplay.manual.title": "死亡回放说明书",
+	"deathreplay.manual.search": "搜索说明书……",
+	"deathreplay.manual.button": "说明书"
 }

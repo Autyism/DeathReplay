@@ -2,7 +2,7 @@
 mod.id = "autyism-deathreplay"
 mod.name = "Death Replay"
 mod.group = "io.github.autyism.deathreplay"
-mod.version = "0.2.0"
+mod.version = "0.2.1"
 # Files keep the old name (see DeathReplayClient.NAMESPACE)
 mod.archives_name = "deathreplay"
 mod.loader_compat = ">=0.19.5"

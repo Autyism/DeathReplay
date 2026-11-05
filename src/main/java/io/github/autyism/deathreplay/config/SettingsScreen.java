@@ -82,6 +82,10 @@ public class SettingsScreen extends Screen {
 
 		this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> this.onClose())
 			.bounds(this.width / 2 - 100, y, 200, WIDGET_HEIGHT)
+			.build());		// the manual, top right
+		this.addRenderableWidget(Button.builder(Component.translatable("deathreplay.manual.button").withStyle(net.minecraft.ChatFormatting.GOLD),
+				button -> this.minecraft.setScreen(new ManualScreen(this)))
+			.bounds(this.width - 76, 5, 70, WIDGET_HEIGHT)
 			.build());
 	}
 
